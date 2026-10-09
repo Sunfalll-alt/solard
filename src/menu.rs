@@ -116,8 +116,13 @@ impl InteractiveMenu {
         println!("\x1b[0m");
         println!("       \x1b[1;33m☀️  SOLAR THEME DAEMON FOR GNOME & KITTY  🌙\x1b[0m\n");
 
+        let sys = crate::desktop::SystemInfo::detect();
+        let sys_display = format!("{} ({})", sys.distro_name, sys.desktop.display_name());
+
         // Live Status Box
         println!("\x1b[1;37m┌─────────────────── ТЕКУЩИЙ СТАТУС ────────────────────┐\x1b[0m");
+        println!("│ Система:     {:<40} │", sys_display.chars().take(40).collect::<String>());
+        println!("│ Сессия:      {:<40} │", sys.session_type.as_str());
         println!("│ Демон:       {:<40} │", daemon_info);
         println!("│ Автозапуск:  {:<40} │", autostart_info);
         println!("│ Тема сейчас: {:<40} │", solar_info.current_theme);

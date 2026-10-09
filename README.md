@@ -1,6 +1,8 @@
 # ☀️🌙 Solard — Демон автоматического переключения светлой/темной темы
 
-**Solard** — это легковесный, быстрый и модульный демон на **Rust** для **Arch Linux (GNOME Wayland)**, синхронно переключающий оформление системы по положению солнца (восход/закат по координатам) или по заданному расписанию.
+**Solard** — это легковесный, быстрый и модульный демон на **Rust** для **любых Linux-дистрибутивов** (Arch Linux, Ubuntu, Debian, Linux Mint, Fedora и др.), синхронно переключающий оформление системы по положению солнца (восход/закат по координатам) или по заданному расписанию.
+
+Автоматически определяет ваше графическое окружение (**GNOME**, **Cinnamon / Linux Mint**, **KDE Plasma**, **XFCE**, **MATE**) и тип сессии (**Wayland** или **X11**).
 
 ---
 
@@ -14,14 +16,15 @@
    - Поддерживает альтернативный режим фиксированного времени (например, день с 07:30, ночь с 20:30).
    - Астрономический расчет фаз Луны (новолуние, четверти, полнолуние с % освещенности) и точного времени её захода.
 
-2. **GNOME & Сессия Wayland**:
-   - Мгновенное переключение `org.gnome.desktop.interface color-scheme` (`prefer-light` / `prefer-dark`).
-   - Переключение `gtk-theme` для классических приложений GTK 3/4 (например, Adwaita / Adwaita-dark).
-   - Автоматическая смена дневных и ночных обоев (`picture-uri` и `picture-uri-dark`).
-   - Интеграция со встроенным **GNOME Night Light** (аппаратный фильтр синего цвета под Wayland).
+2. **Поддержка рабочих окружений (DE) и сессий Wayland / X11**:
+   - **GNOME** (Ubuntu, Debian, Fedora, Arch): переключение `color-scheme` (Portal / libadwaita), `gtk-theme`, обоев и встроенного Night Light.
+   - **Cinnamon** (Linux Mint): переключение `org.cinnamon.desktop.interface` (GTK, темы оболочки Cinnamon, обоев и color-scheme).
+   - **KDE Plasma** (Kubuntu, Debian, Arch): вызовы `plasma-apply-colorscheme`, `plasma-apply-lookandfeel`, обоев.
+   - **XFCE** (Xubuntu, Mint XFCE): переключение тем через `xfconf-query` (xsettings и xfce4-desktop).
+   - **MATE** (Ubuntu MATE, Mint MATE): переключение `org.mate.interface` и фона рабочего стола.
 
 3. **Браузеры (Firefox, Chrome, Chromium)**:
-   - В среде GNOME Wayland браузеры слушают FreeDesktop Appearance Portal (`xdg-desktop-portal`). Переключение системной `color-scheme` автоматически переключает темы сайтов (`@media (prefers-color-scheme: dark/light)`) и интерфейс браузера без необходимости сторонних расширений.
+   - В сессиях с FreeDesktop Appearance Portal (`xdg-desktop-portal`) браузеры мгновенно переключают темы сайтов (`@media (prefers-color-scheme: dark/light)`) и интерфейс без необходимости сторонних расширений.
 
 4. **Терминал Kitty**:
    - Атомарное обновление символической ссылки `~/.config/kitty/current-theme.conf`.
@@ -31,7 +34,6 @@
 5. **Qt (Kvantum & qt6ct)**:
    - Синхронное переключение тем Kvantum (`kvantummanager --set <theme>` или `kvconfig`).
    - Синхронизация цветовой палитры в `qt6ct.conf`.
-   - Нативные Qt приложения на GNOME Wayland (через `qgnomeplatform` / `QT_QPA_PLATFORMTHEME=gnome`) также нативно подхватывают тему через portal.
 
 6. **Gammastep / Redshift**:
    - Опциональное управление температурой экрана (`gammastep -O <temp>` или управление через systemd-юнит `gammastep.service`).
@@ -41,12 +43,24 @@
 
 ---
 
-## 📦 Установка на Arch Linux
+## 📦 Установка в различных дистрибутивах
 
-### 1. Установка зависимостей
-```bash
-sudo pacman -S rust cargo kitty libnotify
-```
+### 1. Установка зависимостей сборки
+
+- **Arch Linux / Manjaro**:
+  ```bash
+  sudo pacman -S --needed base-devel rust cargo kitty libnotify
+  ```
+
+- **Ubuntu / Debian / Linux Mint**:
+  ```bash
+  sudo apt update && sudo apt install -y build-essential cargo rustc kitty libnotify-bin
+  ```
+
+- **Fedora**:
+  ```bash
+  sudo dnf install -y gcc cargo rust kitty libnotify
+  ```
 
 ### 2. Сборка и установка бинарника
 ```bash

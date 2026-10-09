@@ -1,5 +1,6 @@
 mod config;
 mod daemon;
+mod desktop;
 mod menu;
 mod moon;
 mod snapshot;
@@ -120,10 +121,13 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Status => {
             let config = Config::load_or_default(&config_path)?;
+            let sys = desktop::SystemInfo::detect();
             println!("=== Solard Status ===");
-            println!("Config path: {}", config_path.display());
-            println!("Schedule mode: {:?}", config.schedule.mode);
-            println!("Location: Lat {}, Lon {}", config.location.latitude, config.location.longitude);
+            println!("OS / Distro:  {}", sys.distro_name);
+            println!("Desktop (DE): {} ({})", sys.desktop.display_name(), sys.session_type.as_str());
+            println!("Config path:  {}", config_path.display());
+            println!("Schedule:     {:?}", config.schedule.mode);
+            println!("Location:     Lat {}, Lon {}", config.location.latitude, config.location.longitude);
 
             let calc = SolarCalculator::new(config.location.latitude, config.location.longitude)
                 .with_zenith(config.location.zenith)
