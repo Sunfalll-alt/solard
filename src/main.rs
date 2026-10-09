@@ -1,6 +1,7 @@
 mod config;
 mod daemon;
 mod menu;
+mod moon;
 mod snapshot;
 mod solar;
 mod switcher;
@@ -153,6 +154,18 @@ fn main() -> anyhow::Result<()> {
             let is_day = calc.is_daytime(now_utc);
             println!("Calculated solar state: {}", if is_day { "Day (Light)" } else { "Night (Dark)" });
 
+            // Moon phase & Moonset
+            let moon = moon::MoonCalculator::calculate_phase(now_utc.date_naive());
+            let moonset_str = match calc.calculate(now_utc.date_naive()) {
+                SolarTimes::Normal { sunset_utc, .. } => {
+                    let ss_time = sunset_utc.with_timezone(&Local).time();
+                    let ms = moon::MoonCalculator::calculate_moonset(now_utc.date_naive(), ss_time);
+                    format!("Moonset at {}", ms.format("%H:%M"))
+                }
+                _ => "Moonset: -".to_string(),
+            };
+            println!("Moon Phase: {} {} ({}%), {}", moon.emoji, moon.phase_name, moon.illumination_pct, moonset_str);
+
             let (next_trans, target_light) = calc.next_transition(now_utc);
             let next_trans_local = next_trans.with_timezone(&Local);
             let duration = next_trans - now_utc;
@@ -179,35 +192,42 @@ fn main() -> anyhow::Result<()> {
                 .with_zenith(config.location.zenith)
                 .with_offsets(config.location.sunrise_offset_minutes, config.location.sunset_offset_minutes);
 
-            println!("Solar Schedule for Lat: {:.4}, Lon: {:.4}", config.location.latitude, config.location.longitude);
-            println!("{:<12} | {:<10} | {:<10} | {:<12}", "Date", "Sunrise", "Sunset", "Day Length");
-            println!("------------------------------------------------------------");
+            println!("Solar & Lunar Ephemeris for Lat: {:.4}, Lon: {:.4}\n", config.location.latitude, config.location.longitude);
+            println!("{:<10} │ {:<10} │ {:<10} │ {:<10} │ {:<24} │ {:<10}", "Date", "Sunrise ☀️", "Sunset 🌙", "Day Length", "Moon Phase", "Moonset 🌙");
+            println!("───────────┼────────────┼────────────┼────────────┼──────────────────────────┼───────────");
 
             let mut date = Utc::now().date_naive();
             for _ in 0..7 {
-                match calc.calculate(date) {
+                let moon = moon::MoonCalculator::calculate_phase(date);
+                let (sr_str, ss_str, day_len, ms_str) = match calc.calculate(date) {
                     SolarTimes::Normal { sunrise_utc, sunset_utc } => {
                         let sr_local = sunrise_utc.with_timezone(&Local);
                         let ss_local = sunset_utc.with_timezone(&Local);
                         let duration = sunset_utc - sunrise_utc;
                         let hours = duration.num_hours();
                         let mins = duration.num_minutes() % 60;
-                        println!(
-                            "{:<12} | {:<10} | {:<10} | {}h {}m",
-                            date.format("%Y-%m-%d"),
-                            sr_local.format("%H:%M"),
-                            ss_local.format("%H:%M"),
-                            hours,
-                            mins
-                        );
+                        let ms = moon::MoonCalculator::calculate_moonset(date, ss_local.time());
+                        (
+                            sr_local.format("%H:%M").to_string(),
+                            ss_local.format("%H:%M").to_string(),
+                            format!("{}h {:02}m", hours, mins),
+                            ms.format("%H:%M").to_string(),
+                        )
                     }
-                    SolarTimes::PolarDay => {
-                        println!("{:<12} | {:<10} | {:<10} | 24h 00m (Polar Day)", date.format("%Y-%m-%d"), "-", "-");
-                    }
-                    SolarTimes::PolarNight => {
-                        println!("{:<12} | {:<10} | {:<10} | 00h 00m (Polar Night)", date.format("%Y-%m-%d"), "-", "-");
-                    }
-                }
+                    SolarTimes::PolarDay => ("-".to_string(), "-".to_string(), "24h 00m".to_string(), "-".to_string()),
+                    SolarTimes::PolarNight => ("-".to_string(), "-".to_string(), "00h 00m".to_string(), "-".to_string()),
+                };
+
+                let moon_str = format!("{} {} ({:>2}%)", moon.emoji, moon.phase_name, moon.illumination_pct);
+                println!(
+                    "{:<10} │ {:<10} │ {:<10} │ {:<10} │ {:<24} │ {:<10}",
+                    date.format("%Y-%m-%d"),
+                    sr_str,
+                    ss_str,
+                    day_len,
+                    moon_str,
+                    ms_str
+                );
                 date = date + chrono::Duration::days(1);
             }
         }

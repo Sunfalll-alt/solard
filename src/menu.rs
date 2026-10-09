@@ -122,6 +122,7 @@ impl InteractiveMenu {
         println!("│ Автозапуск:  {:<40} │", autostart_info);
         println!("│ Тема сейчас: {:<40} │", solar_info.current_theme);
         println!("│ Солнце:      {:<40} │", solar_info.sun_times);
+        println!("│ Луна:        {:<40} │", solar_info.moon_info);
         println!("│ Следующее:   {:<40} │", solar_info.next_event);
         println!("│ Таймер:      {:<40} │", solar_info.countdown);
         println!("│ Координаты:  {:<40} │", format!("{:.2}° N, {:.2}° E", config.location.latitude, config.location.longitude));
@@ -756,11 +757,24 @@ impl InteractiveMenu {
             format!("\x1b[1;33m⏳ Через {}с\x1b[0m", seconds)
         };
 
+        // Moon phase and moonset calculation
+        let moon = crate::moon::MoonCalculator::calculate_phase(now_utc.date_naive());
+        let moonset_str = match calc.calculate(now_utc.date_naive()) {
+            SolarTimes::Normal { sunset_utc, .. } => {
+                let ss = sunset_utc.with_timezone(&Local).time();
+                let ms = crate::moon::MoonCalculator::calculate_moonset(now_utc.date_naive(), ss);
+                format!("заход {}", ms.format("%H:%M"))
+            }
+            _ => "заход -".to_string(),
+        };
+        let moon_info = format!("{} {} ({}%), {}", moon.emoji, moon.phase_name, moon.illumination_pct, moonset_str);
+
         SolarDisplayInfo {
             current_theme,
             sun_times,
             next_event,
             countdown,
+            moon_info,
         }
     }
 
@@ -803,6 +817,7 @@ struct SolarDisplayInfo {
     sun_times: String,
     next_event: String,
     countdown: String,
+    moon_info: String,
 }
 
 /// RAII Guard for enabling and restoring terminal raw mode
