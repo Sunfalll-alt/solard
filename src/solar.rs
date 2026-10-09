@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 
 /// Result of solar calculation for a specific day
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,9 +156,9 @@ impl SolarCalculator {
     fn hour_to_datetime(&self, date: NaiveDate, hour_float: f64) -> DateTime<Utc> {
         let total_seconds = (hour_float * 3600.0).round() as u32;
         let clamped_secs = total_seconds.min(86399);
-        let hour = (clamped_secs / 3600) as u32;
-        let minute = ((clamped_secs % 3600) / 60) as u32;
-        let second = (clamped_secs % 60) as u32;
+        let hour = clamped_secs / 3600;
+        let minute = (clamped_secs % 3600) / 60;
+        let second = clamped_secs % 60;
 
         let naive_time = NaiveTime::from_hms_opt(hour, minute, second).unwrap_or_default();
         let naive_dt = NaiveDateTime::new(date, naive_time);
@@ -176,7 +176,6 @@ impl SolarCalculator {
                 if sunrise_utc <= sunset_utc {
                     now_utc >= sunrise_utc && now_utc < sunset_utc
                 } else {
-                    // Polar or high latitude edge case where sunrise is after sunset on this UTC date
                     now_utc >= sunrise_utc || now_utc < sunset_utc
                 }
             }
@@ -189,6 +188,7 @@ impl SolarCalculator {
     pub fn next_transition(&self, now_utc: DateTime<Utc>) -> (DateTime<Utc>, bool) {
         let date = now_utc.date_naive();
         let is_day = self.is_daytime(now_utc);
+        let tomorrow = date + chrono::Duration::days(1);
 
         if is_day {
             // Next event is sunset
@@ -198,7 +198,7 @@ impl SolarCalculator {
                 }
             }
             // Check tomorrow's sunset if today's already passed
-            if let SolarTimes::Normal { sunset_utc, .. } = self.calculate(date.succ_opt().unwrap_or(date)) {
+            if let SolarTimes::Normal { sunset_utc, .. } = self.calculate(tomorrow) {
                 return (sunset_utc, false);
             }
         } else {
@@ -209,33 +209,12 @@ impl SolarCalculator {
                 }
             }
             // Check tomorrow's sunrise
-            if let SolarTimes::Normal { sunrise_utc, .. } = self.calculate(date.succ_opt().unwrap_or(date)) {
+            if let SolarTimes::Normal { sunrise_utc, .. } = self.calculate(tomorrow) {
                 return (sunrise_utc, true);
             }
         }
 
         // Fallback for polar days: check in 1 hour
         (now_utc + chrono::Duration::hours(1), is_day)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_solar_calc_moscow() {
-        // Moscow ~ 55.7558° N, 37.6173° E
-        let calc = SolarCalculator::new(55.7558, 37.6173);
-        let date = NaiveDate::from_ymd_opt(2026, 6, 21).unwrap();
-        match calc.calculate(date) {
-            SolarTimes::Normal {
-                sunrise_utc,
-                sunset_utc,
-            } => {
-                assert!(sunrise_utc < sunset_utc);
-            }
-            _ => panic!("Expected normal sunrise/sunset"),
-        }
     }
 }

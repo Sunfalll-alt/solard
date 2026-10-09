@@ -1,13 +1,11 @@
 use crate::config::{Config, ScheduleMode};
-use crate::solar::{SolarCalculator, SolarTimes};
+use crate::solar::SolarCalculator;
 use crate::switcher::ThemeManager;
 use crate::theme::ThemeMode;
 use anyhow::Result;
-use chrono::{DateTime, Local, NaiveTime, Timelike, Utc};
-use nix::sys::signal::{self, SigHandler, Signal};
-use std::path::{Path, PathBuf};
+use chrono::{Local, NaiveTime, Utc};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -66,12 +64,12 @@ impl Daemon {
     pub fn run(&mut self) -> Result<()> {
         log::info!("Starting Solard Daemon (PID: {})", std::process::id());
 
-        // Setup signal handlers
+        // Setup signal handlers via libc
         unsafe {
-            signal::signal(Signal::SIGINT, SigHandler::Handler(handle_sigint_term))?;
-            signal::signal(Signal::SIGTERM, SigHandler::Handler(handle_sigint_term))?;
-            signal::signal(Signal::SIGUSR1, SigHandler::Handler(handle_sigusr1))?;
-            signal::signal(Signal::SIGHUP, SigHandler::Handler(handle_sighup))?;
+            libc::signal(libc::SIGINT, handle_sigint_term as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, handle_sigint_term as libc::sighandler_t);
+            libc::signal(libc::SIGUSR1, handle_sigusr1 as libc::sighandler_t);
+            libc::signal(libc::SIGHUP, handle_sighup as libc::sighandler_t);
         }
 
         let mut manager = ThemeManager::new(&self.config);

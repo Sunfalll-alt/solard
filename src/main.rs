@@ -4,14 +4,14 @@ mod solar;
 mod switcher;
 mod theme;
 
+use chrono::{Local, Utc};
 use clap::{Parser, Subcommand};
 use config::Config;
 use daemon::Daemon;
 use solar::{SolarCalculator, SolarTimes};
+use std::path::PathBuf;
 use switcher::ThemeManager;
 use theme::ThemeMode;
-use std::path::PathBuf;
-use chrono::{DateTime, Local, Utc};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -77,18 +77,15 @@ fn main() -> anyhow::Result<()> {
                 PathBuf::from("/tmp/solard.state")
             };
 
-            // If daemon is running, try sending SIGUSR1 to it
+            // If daemon is running, try sending SIGUSR1 to it via libc::kill
             let mut signaled = false;
             if state_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&state_path) {
                     if let Some(pid_str) = content.split("\"pid\":").nth(1) {
                         let pid_num = pid_str.trim().trim_end_matches('}').trim().parse::<i32>();
                         if let Ok(pid) = pid_num {
-                            let kill_res = nix::sys::signal::kill(
-                                nix::unistd::Pid::from_raw(pid),
-                                nix::sys::signal::Signal::SIGUSR1,
-                            );
-                            if kill_res.is_ok() {
+                            let res = unsafe { libc::kill(pid, libc::SIGUSR1) };
+                            if res == 0 {
                                 println!("Sent toggle signal (SIGUSR1) to running solard daemon (PID {})", pid);
                                 signaled = true;
                             }
@@ -123,8 +120,8 @@ fn main() -> anyhow::Result<()> {
 
             match calc.calculate(now_utc.date_naive()) {
                 SolarTimes::Normal { sunrise_utc, sunset_utc } => {
-                    let sunrise_local: DateTime<Local> = DateTime::from(sunrise_utc);
-                    let sunset_local: DateTime<Local> = DateTime::from(sunset_utc);
+                    let sunrise_local = sunrise_utc.with_timezone(&Local);
+                    let sunset_local = sunset_utc.with_timezone(&Local);
                     println!("Sunrise (today): {}", sunrise_local.format("%H:%M:%S"));
                     println!("Sunset  (today): {}", sunset_local.format("%H:%M:%S"));
                 }
@@ -136,7 +133,7 @@ fn main() -> anyhow::Result<()> {
             println!("Calculated solar state: {}", if is_day { "Day (Light)" } else { "Night (Dark)" });
 
             let (next_trans, target_light) = calc.next_transition(now_utc);
-            let next_trans_local: DateTime<Local> = DateTime::from(next_trans);
+            let next_trans_local = next_trans.with_timezone(&Local);
             println!(
                 "Next transition: {} at {}",
                 if target_light { "Sunrise -> Light" } else { "Sunset -> Dark" },
@@ -157,8 +154,8 @@ fn main() -> anyhow::Result<()> {
             for _ in 0..7 {
                 match calc.calculate(date) {
                     SolarTimes::Normal { sunrise_utc, sunset_utc } => {
-                        let sr_local: DateTime<Local> = DateTime::from(sunrise_utc);
-                        let ss_local: DateTime<Local> = DateTime::from(sunset_utc);
+                        let sr_local = sunrise_utc.with_timezone(&Local);
+                        let ss_local = sunset_utc.with_timezone(&Local);
                         let duration = sunset_utc - sunrise_utc;
                         let hours = duration.num_hours();
                         let mins = duration.num_minutes() % 60;
@@ -178,7 +175,7 @@ fn main() -> anyhow::Result<()> {
                         println!("{:<12} | {:<10} | {:<10} | 00h 00m (Polar Night)", date.format("%Y-%m-%d"), "-", "-");
                     }
                 }
-                date = date.succ_opt().unwrap_or(date);
+                date = date + chrono::Duration::days(1);
             }
         }
         Commands::InitConfig { force } => {
