@@ -1,5 +1,6 @@
 mod config;
 mod daemon;
+mod menu;
 mod snapshot;
 mod solar;
 mod switcher;
@@ -32,6 +33,8 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Open interactive TUI control menu
+    Menu,
     /// Run as a background daemon
     Daemon,
     /// Immediately set theme to 'light' or 'dark'
@@ -61,7 +64,11 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config_path = cli.config.unwrap_or_else(Config::default_path);
 
-    match cli.command.unwrap_or(Commands::Daemon) {
+    match cli.command.unwrap_or(Commands::Menu) {
+        Commands::Menu => {
+            let mut m = menu::InteractiveMenu::new(config_path);
+            m.run()?;
+        }
         Commands::Daemon => {
             let mut daemon = Daemon::new(config_path)?;
             daemon.run()?;
