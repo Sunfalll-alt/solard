@@ -8,6 +8,26 @@ use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
+const SYSTEMD_UNIT: &str = r#"[Unit]
+Description=Solard - Dynamic Solar & Scheduled Theme Daemon
+Documentation=https://github.com/Sunfalll-alt/solard
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/solard daemon
+Restart=on-failure
+RestartSec=5s
+
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_CURRENT_DESKTOP=GNOME
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target
+"#;
+
 pub struct InteractiveMenu {
     config_path: PathBuf,
     selected_index: usize,
@@ -79,6 +99,7 @@ impl InteractiveMenu {
     fn draw_main(&self) -> anyhow::Result<()> {
         let config = Config::load_or_default(&self.config_path).unwrap_or_default();
         let daemon_info = self.get_daemon_status();
+        let (autostart_enabled, autostart_info) = self.get_autostart_status();
         let solar_info = self.get_solar_info(&config);
 
         // Clear screen, move cursor to top-left, hide cursor
@@ -98,21 +119,28 @@ impl InteractiveMenu {
         // Live Status Box
         println!("\x1b[1;37m┌─────────────────── ТЕКУЩИЙ СТАТУС ────────────────────┐\x1b[0m");
         println!("│ Демон:       {:<40} │", daemon_info);
+        println!("│ Автозапуск:  {:<40} │", autostart_info);
         println!("│ Тема сейчас: {:<40} │", solar_info.current_theme);
-        println!("│ Режим:       {:<40} │", format!("{:?}", config.schedule.mode));
         println!("│ Солнце:      {:<40} │", solar_info.sun_times);
         println!("│ Следующее:   {:<40} │", solar_info.next_event);
+        println!("│ Таймер:      {:<40} │", solar_info.countdown);
         println!("│ Координаты:  {:<40} │", format!("{:.2}° N, {:.2}° E", config.location.latitude, config.location.longitude));
         println!("\x1b[1;37m└───────────────────────────────────────────────────────┘\x1b[0m\n");
 
-        // Interactive Options
+        // Dynamic Autostart Label
+        let autostart_action = if autostart_enabled {
+            ("🛑  Отключить автозапуск (Systemd)", "Выключить службу автозапуска при входе")
+        } else {
+            ("🚀  Включить автозапуск (Systemd)", "Запускать демон автоматически при входе в систему")
+        };
+
         let options = [
             ("1", "☀️  Включить дневную (светлую) тему", "Применить режим дня для GNOME, Kitty, Qt"),
             ("2", "🌙  Включить ночную (тёмную) тему", "Применить режим ночи для GNOME, Kitty, Qt"),
             ("3", "🔄  Инвертировать тему (Toggle)", "Быстрое переключение светлая <-> тёмная"),
             ("4", "📊  Подробный статус (Status)", "Показать полные данные и состояние"),
             ("5", "📅  Таблица восходов на 7 дней (Calc)", "Астрономический график солнца на неделю"),
-            ("6", "🚀  Запустить демон в фоне (Systemd)", "Включить автопереключение по солнцу"),
+            ("6", autostart_action.0, autostart_action.1),
             ("7", "⏹️   Остановить демон (Restore)", "Остановить и вернуть изначальные настройки"),
             ("8", "⚙️   Настройки и конфигурация (Config)", "Интерактивный редактор всех параметров"),
             ("9", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
@@ -189,25 +217,10 @@ impl InteractiveMenu {
                 raw_guard.enable_raw();
             }
             5 => {
+                // Autostart toggle
                 raw_guard.disable_raw();
                 print!("\x1b[2J\x1b[1;1H\x1b[?25h");
-                println!("\x1b[1;32m▶ Запуск службы Systemd...\x1b[0m");
-                let status = Command::new("systemctl")
-                    .args(["--user", "restart", "solard.service"])
-                    .status();
-                match status {
-                    Ok(s) if s.success() => {
-                        println!("\x1b[1;32m✔ Служба solard.service успешно запущена в фоне!\x1b[0m");
-                    }
-                    _ => {
-                        println!("\x1b[1;33mЗапуск в текущем сеансе (фоновый процесс)...\x1b[0m");
-                        let _ = Command::new("nohup")
-                            .args(["solard", "daemon"])
-                            .spawn();
-                        println!("\x1b[1;32m✔ Демон запущен!\x1b[0m");
-                    }
-                }
-                Self::pause_prompt();
+                self.toggle_autostart()?;
                 raw_guard.enable_raw();
             }
             6 => {
@@ -230,6 +243,48 @@ impl InteractiveMenu {
         }
 
         Ok(false)
+    }
+
+    /// Toggles systemd user autostart service
+    fn toggle_autostart(&self) -> anyhow::Result<()> {
+        let (is_enabled, _) = self.get_autostart_status();
+
+        if is_enabled {
+            println!("\x1b[1;33m▶ Отключение автозапуска Systemd...\x1b[0m");
+            let _ = Command::new("systemctl")
+                .args(["--user", "disable", "--now", "solard.service"])
+                .status();
+            println!("\x1b[1;32m✔ Автозапуск отключен и служба остановлена!\x1b[0m");
+        } else {
+            println!("\x1b[1;32m▶ Включение автозапуска Systemd...\x1b[0m");
+
+            // Ensure unit file exists
+            if let Some(dirs) = directories::BaseDirs::new() {
+                let unit_path = dirs.config_dir().join("systemd").join("user").join("solard.service");
+                if let Some(parent) = unit_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&unit_path, SYSTEMD_UNIT);
+                log::info!("Written systemd service to {:?}", unit_path);
+            }
+
+            let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).status();
+            let status = Command::new("systemctl")
+                .args(["--user", "enable", "--now", "solard.service"])
+                .status();
+
+            match status {
+                Ok(s) if s.success() => {
+                    println!("\x1b[1;32m✔ Автозапуск успешно включен и служба запущена в фоне!\x1b[0m");
+                }
+                _ => {
+                    println!("\x1b[1;31mОшибка при выполнении systemctl enable\x1b[0m");
+                }
+            }
+        }
+
+        Self::pause_prompt();
+        Ok(())
     }
 
     /// Fully interactive Config Editor with Arrow Keys navigation
@@ -642,6 +697,21 @@ impl InteractiveMenu {
         "\x1b[1;31m○ Не запущен\x1b[0m".to_string()
     }
 
+    fn get_autostart_status(&self) -> (bool, String) {
+        let out = Command::new("systemctl")
+            .args(["--user", "is-enabled", "solard.service"])
+            .output();
+
+        if let Ok(o) = out {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s == "enabled" {
+                return (true, "\x1b[1;32m● Включен (Systemd)\x1b[0m".to_string());
+            }
+        }
+
+        (false, "\x1b[1;31m○ Выключен\x1b[0m".to_string())
+    }
+
     fn get_solar_info(&self, config: &Config) -> SolarDisplayInfo {
         let calc = SolarCalculator::new(config.location.latitude, config.location.longitude)
             .with_zenith(config.location.zenith)
@@ -671,10 +741,26 @@ impl InteractiveMenu {
             next_local.format("%H:%M")
         );
 
+        // Countdown timer calculation
+        let duration = next_trans - now_utc;
+        let total_seconds = duration.num_seconds().max(0);
+        let hours = total_seconds / 3600;
+        let minutes = (total_seconds % 3600) / 60;
+        let seconds = total_seconds % 60;
+
+        let countdown = if hours > 0 {
+            format!("\x1b[1;36m⏳ Через {}ч {:02}м {:02}с\x1b[0m", hours, minutes, seconds)
+        } else if minutes > 0 {
+            format!("\x1b[1;36m⏳ Через {}м {:02}с\x1b[0m", minutes, seconds)
+        } else {
+            format!("\x1b[1;33m⏳ Через {}с\x1b[0m", seconds)
+        };
+
         SolarDisplayInfo {
             current_theme,
             sun_times,
             next_event,
+            countdown,
         }
     }
 
@@ -716,6 +802,7 @@ struct SolarDisplayInfo {
     current_theme: String,
     sun_times: String,
     next_event: String,
+    countdown: String,
 }
 
 /// RAII Guard for enabling and restoring terminal raw mode

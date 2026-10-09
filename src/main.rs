@@ -56,6 +56,10 @@ enum Commands {
     },
     /// Stop running solard daemon
     Stop,
+    /// Enable systemd user autostart service
+    Enable,
+    /// Disable systemd user autostart service
+    Disable,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -139,15 +143,34 @@ fn main() -> anyhow::Result<()> {
                 SolarTimes::PolarNight => println!("Solar condition: Polar Night (Sun never rises)"),
             }
 
+            // Autostart status
+            let autostart_out = std::process::Command::new("systemctl")
+                .args(["--user", "is-enabled", "solard.service"])
+                .output();
+            let is_enabled = autostart_out.map(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled").unwrap_or(false);
+            println!("Autostart (Systemd): {}", if is_enabled { "Enabled" } else { "Disabled" });
+
             let is_day = calc.is_daytime(now_utc);
             println!("Calculated solar state: {}", if is_day { "Day (Light)" } else { "Night (Dark)" });
 
             let (next_trans, target_light) = calc.next_transition(now_utc);
             let next_trans_local = next_trans.with_timezone(&Local);
+            let duration = next_trans - now_utc;
+            let total_seconds = duration.num_seconds().max(0);
+            let hours = total_seconds / 3600;
+            let minutes = (total_seconds % 3600) / 60;
+            let seconds = total_seconds % 60;
+            let countdown_str = if hours > 0 {
+                format!("{}h {:02}m {:02}s", hours, minutes, seconds)
+            } else {
+                format!("{}m {:02}s", minutes, seconds)
+            };
+
             println!(
-                "Next transition: {} at {}",
+                "Next transition: {} at {} (in {})",
                 if target_light { "Sunrise -> Light" } else { "Sunset -> Dark" },
-                next_trans_local.format("%H:%M:%S")
+                next_trans_local.format("%H:%M:%S"),
+                countdown_str
             );
         }
         Commands::Calc => {
@@ -242,6 +265,51 @@ fn main() -> anyhow::Result<()> {
 
             if !stopped {
                 println!("Solard daemon stopped");
+            }
+        }
+        Commands::Enable => {
+            if let Some(dirs) = directories::BaseDirs::new() {
+                let unit_path = dirs.config_dir().join("systemd").join("user").join("solard.service");
+                if let Some(parent) = unit_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                const SYSTEMD_UNIT: &str = r#"[Unit]
+Description=Solard - Dynamic Solar & Scheduled Theme Daemon
+Documentation=https://github.com/Sunfalll-alt/solard
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/solard daemon
+Restart=on-failure
+RestartSec=5s
+
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_CURRENT_DESKTOP=GNOME
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target
+"#;
+                let _ = std::fs::write(&unit_path, SYSTEMD_UNIT);
+            }
+            let _ = std::process::Command::new("systemctl").args(["--user", "daemon-reload"]).status();
+            let status = std::process::Command::new("systemctl")
+                .args(["--user", "enable", "--now", "solard.service"])
+                .status();
+            match status {
+                Ok(s) if s.success() => println!("Autostart enabled and solard.service started!"),
+                _ => eprintln!("Failed to enable autostart via systemctl"),
+            }
+        }
+        Commands::Disable => {
+            let status = std::process::Command::new("systemctl")
+                .args(["--user", "disable", "--now", "solard.service"])
+                .status();
+            match status {
+                Ok(s) if s.success() => println!("Autostart disabled and solard.service stopped."),
+                _ => eprintln!("Failed to disable autostart via systemctl"),
             }
         }
     }
