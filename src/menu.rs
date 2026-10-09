@@ -61,11 +61,11 @@ impl InteractiveMenu {
                     if self.selected_index > 0 {
                         self.selected_index -= 1;
                     } else {
-                        self.selected_index = 8; // wrap to bottom
+                        self.selected_index = 9; // wrap to bottom
                     }
                 }
                 Key::Down => {
-                    if self.selected_index < 8 {
+                    if self.selected_index < 9 {
                         self.selected_index += 1;
                     } else {
                         self.selected_index = 0; // wrap to top
@@ -85,6 +85,7 @@ impl InteractiveMenu {
                 Key::Char('7') => { if self.handle_main_action(6, &raw_guard)? { break; } }
                 Key::Char('8') => { if self.handle_main_action(7, &raw_guard)? { break; } }
                 Key::Char('9') => { if self.handle_main_action(8, &raw_guard)? { break; } }
+                Key::Char('0') => { if self.handle_main_action(9, &raw_guard)? { break; } }
                 Key::Quit | Key::Char('q') => break,
                 _ => {}
             }
@@ -101,6 +102,22 @@ impl InteractiveMenu {
         let daemon_info = self.get_daemon_status();
         let (autostart_enabled, autostart_info) = self.get_autostart_status();
         let solar_info = self.get_solar_info(&config);
+
+        let pause_info = if let Some(state) = crate::daemon::DaemonState::load() {
+            if state.is_paused() {
+                if let Some(rem) = state.remaining_secs() {
+                    let m = rem / 60;
+                    let s = rem % 60;
+                    format!("⏸️ До {}м {}с", m, s)
+                } else {
+                    "Не активна".to_string()
+                }
+            } else {
+                "Не активна".to_string()
+            }
+        } else {
+            "Не активна".to_string()
+        };
 
         // Clear screen, move cursor to top-left, hide cursor
         print!("\x1b[2J\x1b[1;1H\x1b[?25l");
@@ -124,6 +141,7 @@ impl InteractiveMenu {
         println!("│ Система:     {:<40} │", sys_display.chars().take(40).collect::<String>());
         println!("│ Сессия:      {:<40} │", sys.session_type.as_str());
         println!("│ Демон:       {:<40} │", daemon_info);
+        println!("│ Пауза:       {:<40} │", pause_info);
         println!("│ Автозапуск:  {:<40} │", autostart_info);
         println!("│ Тема сейчас: {:<40} │", solar_info.current_theme);
         println!("│ Солнце:      {:<40} │", solar_info.sun_times);
@@ -140,19 +158,27 @@ impl InteractiveMenu {
             ("🚀  Включить автозапуск (Systemd)", "Запускать демон автоматически при входе в систему")
         };
 
+        let is_paused = crate::daemon::DaemonState::load().map(|s| s.is_paused()).unwrap_or(false);
+        let pause_action = if is_paused {
+            ("▶️  Возобновить авто-смену (Resume)", "Снять паузу и вернуть автоматический режим")
+        } else {
+            ("⏸️   Приостановить авто-смену (Pause)", "Поставить паузу на 2 часа (фильмы, презентации)")
+        };
+
         let options = [
-            ("1", "☀️  Включить дневную (светлую) тему", "Применить режим дня для GNOME, Kitty, Qt"),
-            ("2", "🌙  Включить ночную (тёмную) тему", "Применить режим ночи для GNOME, Kitty, Qt"),
+            ("1", "☀️  Включить дневную (светлую) тему", "Применить режим дня для системы, терминалов и редакторов"),
+            ("2", "🌙  Включить ночную (тёмную) тему", "Применить режим ночи для системы, терминалов и редакторов"),
             ("3", "🔄  Инвертировать тему (Toggle)", "Быстрое переключение светлая <-> тёмная"),
-            ("4", "📊  Подробный статус (Status)", "Показать полные данные и состояние"),
-            ("5", "📅  Таблица восходов на 7 дней (Calc)", "Астрономический график солнца на неделю"),
-            ("6", autostart_action.0, autostart_action.1),
-            ("7", "⏹️   Остановить демон (Restore)", "Остановить и вернуть изначальные настройки"),
-            ("8", "⚙️   Настройки и конфигурация (Config)", "Интерактивный редактор всех параметров"),
-            ("9", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
+            ("4", pause_action.0, pause_action.1),
+            ("5", "📊  Подробный статус (Status)", "Показать полные данные и состояние"),
+            ("6", "📅  Таблица восходов на 7 дней (Calc)", "Астрономический график солнца и луны"),
+            ("7", autostart_action.0, autostart_action.1),
+            ("8", "⏹️   Остановить демон (Restore)", "Остановить и вернуть изначальные настройки"),
+            ("9", "⚙️   Настройки и конфигурация (Config)", "Интерактивный редактор всех параметров"),
+            ("0", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
         ];
 
-        println!("\x1b[1mВыберите действие (стрелки ↑/↓ или клавиши 1-9):\x1b[0m\n");
+        println!("\x1b[1mВыберите действие (стрелки ↑/↓ или клавиши 0-9):\x1b[0m\n");
 
         for (i, (num, title, desc)) in options.iter().enumerate() {
             if i == self.selected_index {
@@ -207,6 +233,40 @@ impl InteractiveMenu {
                 raw_guard.enable_raw();
             }
             3 => {
+                // Pause / Resume toggle
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                if let Some(mut state) = crate::daemon::DaemonState::load() {
+                    if state.is_paused() {
+                        state.paused_until = None;
+                        state.save();
+                        if state.pid > 0 {
+                            let _ = unsafe { libc::kill(state.pid as i32, libc::SIGHUP) };
+                        }
+                        println!("\x1b[1;32m✔ Автоматическое переключение возобновлено!\x1b[0m");
+                    } else {
+                        let end_ts = Utc::now().timestamp() + 7200; // 2 hours
+                        state.paused_until = Some(end_ts);
+                        state.save();
+                        if state.pid > 0 {
+                            let _ = unsafe { libc::kill(state.pid as i32, libc::SIGHUP) };
+                        }
+                        println!("\x1b[1;33m⏸️  Автоматическое переключение приостановлено на 2 часа!\x1b[0m");
+                    }
+                } else {
+                    let end_ts = Utc::now().timestamp() + 7200;
+                    let state = crate::daemon::DaemonState {
+                        mode: "dark".to_string(),
+                        pid: 0,
+                        paused_until: Some(end_ts),
+                    };
+                    state.save();
+                    println!("\x1b[1;33m⏸️  Автоматическое переключение приостановлено на 2 часа!\x1b[0m");
+                }
+                Self::pause_prompt();
+                raw_guard.enable_raw();
+            }
+            4 => {
                 raw_guard.disable_raw();
                 print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;36m=== Подробный статус Solard ===\x1b[0m\n");
@@ -214,7 +274,7 @@ impl InteractiveMenu {
                 Self::pause_prompt();
                 raw_guard.enable_raw();
             }
-            4 => {
+            5 => {
                 raw_guard.disable_raw();
                 print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;36m=== Астрономический график солнца на 7 дней ===\x1b[0m\n");
@@ -222,14 +282,14 @@ impl InteractiveMenu {
                 Self::pause_prompt();
                 raw_guard.enable_raw();
             }
-            5 => {
+            6 => {
                 // Autostart toggle
                 raw_guard.disable_raw();
                 print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 self.toggle_autostart()?;
                 raw_guard.enable_raw();
             }
-            6 => {
+            7 => {
                 raw_guard.disable_raw();
                 print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;31m▶ Остановка демона и восстановление исходных настроек...\x1b[0m");
@@ -238,11 +298,11 @@ impl InteractiveMenu {
                 Self::pause_prompt();
                 raw_guard.enable_raw();
             }
-            7 => {
+            8 => {
                 // Fully interactive config submenu with arrows!
                 self.run_interactive_config_editor(raw_guard)?;
             }
-            8 => {
+            9 => {
                 return Ok(true); // Exit
             }
             _ => {}
@@ -492,7 +552,8 @@ impl InteractiveMenu {
             ("3", "Новосибирск",      55.0084, 82.9357),
             ("4", "Екатеринбург",     56.8389, 60.6057),
             ("5", "Казань",           55.8304, 49.0661),
-            ("6", "Ввести вручную (Широта / Долгота)", 0.0, 0.0),
+            ("6", "🌐 Автоопределение по IP (Curl)", 0.0, 0.0),
+            ("7", "Ввести вручную (Широта / Долгота)", 0.0, 0.0),
             ("0", "Отмена", 0.0, 0.0),
         ];
 
@@ -501,7 +562,7 @@ impl InteractiveMenu {
             print!("\x1b[2J\x1b[1;1H\x1b[?25l");
             println!("\x1b[1;36m══════════ Выбор координат ══════════\x1b[0m\n");
             println!("Текущие координаты: \x1b[1;33m{:.4}° N, {:.4}° E\x1b[0m\n", config.location.latitude, config.location.longitude);
-            println!("\x1b[1mВыберите город стрелками ↑/↓ или клавишами 0-6:\x1b[0m\n");
+            println!("\x1b[1mВыберите город стрелками ↑/↓ или клавишами 0-7:\x1b[0m\n");
 
             for (i, (num, name, lat, lon)) in presets.iter().enumerate() {
                 let coords_str = if *lat != 0.0 {
@@ -537,6 +598,32 @@ impl InteractiveMenu {
                             return Ok(());
                         }
                         5 => {
+                            // Auto IP detect
+                            raw_guard.disable_raw();
+                            print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                            println!("\x1b[1;36m🌐 Определение местоположения по IP...\x1b[0m\n");
+                            match crate::geo::GeoLocator::auto_detect() {
+                                Ok(loc) => {
+                                    println!("Страна:       {}", loc.country);
+                                    println!("Город:        {}", loc.city);
+                                    println!("Часовой пояс: {}", loc.timezone);
+                                    println!("Широта:       {:.4}", loc.latitude);
+                                    println!("Долгота:      {:.4}", loc.longitude);
+                                    config.location.latitude = loc.latitude;
+                                    config.location.longitude = loc.longitude;
+                                    config.save(&self.config_path)?;
+                                    self.notify_daemon_reload();
+                                    println!("\n\x1b[1;32m✔ Координаты успешно сохранены в конфиг!\x1b[0m");
+                                }
+                                Err(e) => {
+                                    println!("\x1b[1;31m✖ Ошибка автоопределения геопозиции: {:#}\x1b[0m", e);
+                                }
+                            }
+                            Self::pause_prompt();
+                            raw_guard.enable_raw();
+                            return Ok(());
+                        }
+                        6 => {
                             // Manual input
                             raw_guard.disable_raw();
                             print!("\x1b[2J\x1b[1;1H\x1b[?25h");
@@ -564,6 +651,31 @@ impl InteractiveMenu {
                 Key::Char('3') => { config.location.latitude = presets[2].2; config.location.longitude = presets[2].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
                 Key::Char('4') => { config.location.latitude = presets[3].2; config.location.longitude = presets[3].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
                 Key::Char('5') => { config.location.latitude = presets[4].2; config.location.longitude = presets[4].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('6') => {
+                    raw_guard.disable_raw();
+                    print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                    println!("\x1b[1;36m🌐 Определение местоположения по IP...\x1b[0m\n");
+                    match crate::geo::GeoLocator::auto_detect() {
+                        Ok(loc) => {
+                            println!("Страна:       {}", loc.country);
+                            println!("Город:        {}", loc.city);
+                            println!("Часовой пояс: {}", loc.timezone);
+                            println!("Широта:       {:.4}", loc.latitude);
+                            println!("Долгота:      {:.4}", loc.longitude);
+                            config.location.latitude = loc.latitude;
+                            config.location.longitude = loc.longitude;
+                            config.save(&self.config_path)?;
+                            self.notify_daemon_reload();
+                            println!("\n\x1b[1;32m✔ Координаты успешно сохранены в конфиг!\x1b[0m");
+                        }
+                        Err(e) => {
+                            println!("\x1b[1;31m✖ Ошибка автоопределения геопозиции: {:#}\x1b[0m", e);
+                        }
+                    }
+                    Self::pause_prompt();
+                    raw_guard.enable_raw();
+                    return Ok(());
+                }
                 Key::Char('0') | Key::Quit | Key::Char('q') => return Ok(()),
                 _ => {}
             }

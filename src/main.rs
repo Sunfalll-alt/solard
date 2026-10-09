@@ -1,6 +1,7 @@
 mod config;
 mod daemon;
 mod desktop;
+mod geo;
 mod menu;
 mod moon;
 mod snapshot;
@@ -11,7 +12,7 @@ mod theme;
 use chrono::{Local, Utc};
 use clap::{Parser, Subcommand};
 use config::Config;
-use daemon::Daemon;
+use daemon::{Daemon, DaemonState};
 use solar::{SolarCalculator, SolarTimes};
 use std::path::PathBuf;
 use switcher::ThemeManager;
@@ -62,6 +63,15 @@ enum Commands {
     Enable,
     /// Disable systemd user autostart service
     Disable,
+    /// Auto-detect geographic coordinates via IP
+    Locate,
+    /// Pause automatic theme switching (e.g. 'solard pause 2h', 'solard pause 30m')
+    Pause {
+        /// Duration to pause (e.g. 2h, 30m, 45s, 1d). Default: 2h
+        duration: Option<String>,
+    },
+    /// Resume automatic theme switching
+    Resume,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -189,6 +199,16 @@ fn main() -> anyhow::Result<()> {
                 next_trans_local.format("%H:%M:%S"),
                 countdown_str
             );
+
+            if let Some(state) = DaemonState::load() {
+                if state.is_paused() {
+                    if let Some(rem) = state.remaining_secs() {
+                        let m = rem / 60;
+                        let s = rem % 60;
+                        println!("Pause mode:      ⏸️ Active (remaining: {}m {}s)", m, s);
+                    }
+                }
+            }
         }
         Commands::Calc => {
             let config = Config::load_or_default(&config_path)?;
@@ -334,6 +354,82 @@ WantedBy=graphical-session.target
             match status {
                 Ok(s) if s.success() => println!("Autostart disabled and solard.service stopped."),
                 _ => eprintln!("Failed to disable autostart via systemctl"),
+            }
+        }
+        Commands::Locate => {
+            println!("🔍 Определение географических координат по IP...");
+            match geo::GeoLocator::auto_detect() {
+                Ok(loc) => {
+                    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    println!(" Страна:       {}", loc.country);
+                    println!(" Город:        {}", loc.city);
+                    println!(" Часовой пояс: {}", loc.timezone);
+                    println!(" Широта:       {:.4}", loc.latitude);
+                    println!(" Долгота:      {:.4}", loc.longitude);
+                    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+                    let mut cfg = Config::load_or_default(&config_path)?;
+                    cfg.location.latitude = loc.latitude;
+                    cfg.location.longitude = loc.longitude;
+                    cfg.save(&config_path)?;
+                    println!("✅ Координаты успешно сохранены в конфиг: {}", config_path.display());
+
+                    // Signal daemon if running so it re-evaluates solar ephemeris
+                    if let Some(state) = DaemonState::load() {
+                        if state.pid > 0 {
+                            let _ = unsafe { libc::kill(state.pid as i32, libc::SIGHUP) };
+                            println!("🔄 Демон (PID {}) уведомлен об обновлении координат (SIGHUP)", state.pid);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Не удалось определить координаты: {:#}", e);
+                }
+            }
+        }
+        Commands::Pause { duration } => {
+            let dur_str = duration.as_deref().unwrap_or("2h");
+            let secs = match DaemonState::parse_duration(dur_str) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("❌ Неверный формат длительности (пример: 2h, 30m, 45s): {:#}", e);
+                    return Ok(());
+                }
+            };
+
+            let end_ts = Utc::now().timestamp() + secs;
+            let mut state = DaemonState::load().unwrap_or_else(|| DaemonState {
+                mode: "dark".to_string(),
+                pid: 0,
+                paused_until: None,
+            });
+            state.paused_until = Some(end_ts);
+            state.save();
+
+            if state.pid > 0 {
+                let _ = unsafe { libc::kill(state.pid as i32, libc::SIGHUP) };
+            }
+
+            let until_local = chrono::DateTime::from_timestamp(end_ts, 0)
+                .map(|dt| dt.with_timezone(&Local).format("%H:%M:%S").to_string())
+                .unwrap_or_default();
+            let mins = secs / 60;
+            println!("⏸️  Автоматическое переключение приостановлено на {} мин (до {})", mins, until_local);
+            println!("    Чтобы возобновить раньше, выполните: solard resume");
+        }
+        Commands::Resume => {
+            if let Some(mut state) = DaemonState::load() {
+                state.paused_until = None;
+                state.save();
+
+                if state.pid > 0 {
+                    let _ = unsafe { libc::kill(state.pid as i32, libc::SIGHUP) };
+                    println!("▶️  Автоматическое переключение возобновлено (демон PID {} оповещен)", state.pid);
+                } else {
+                    println!("▶️  Автоматическое переключение возобновлено");
+                }
+            } else {
+                println!("▶️  Автоматическое переключение возобновлено (состояние сброшено)");
             }
         }
     }

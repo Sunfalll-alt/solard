@@ -2,8 +2,9 @@ use crate::config::{Config, ScheduleMode};
 use crate::solar::SolarCalculator;
 use crate::switcher::ThemeManager;
 use crate::theme::ThemeMode;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use chrono::{Local, NaiveTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -12,6 +13,109 @@ use std::time::Duration;
 static RUNNING: AtomicBool = AtomicBool::new(true);
 static TOGGLE_REQUESTED: AtomicBool = AtomicBool::new(false);
 static RELOAD_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaemonState {
+    pub mode: String,
+    pub pid: u32,
+    pub paused_until: Option<i64>,
+}
+
+impl DaemonState {
+    pub fn file_path() -> PathBuf {
+        if let Some(dirs) = directories::BaseDirs::new() {
+            dirs.data_local_dir().join("solard").join("state.json")
+        } else {
+            PathBuf::from("/tmp/solard.state")
+        }
+    }
+
+    pub fn load() -> Option<Self> {
+        let path = Self::file_path();
+        let content = std::fs::read_to_string(path).ok()?;
+        let pid = content
+            .split("\"pid\":")
+            .nth(1)?
+            .split(|c| c == ',' || c == '}' || c == '\n')
+            .next()?
+            .trim()
+            .parse::<u32>()
+            .ok()?;
+        let mode = content
+            .split("\"mode\":")
+            .nth(1)?
+            .split('"')
+            .nth(1)?
+            .to_string();
+        let paused_until = content
+            .split("\"paused_until\":")
+            .nth(1)
+            .and_then(|s| s.split(|c| c == ',' || c == '}' || c == '\n').next())
+            .and_then(|s| s.trim().parse::<i64>().ok());
+        Some(Self {
+            mode,
+            pid,
+            paused_until,
+        })
+    }
+
+    pub fn save(&self) {
+        let path = Self::file_path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let pause_val = match self.paused_until {
+            Some(ts) => ts.to_string(),
+            None => "null".to_string(),
+        };
+        let json = format!(
+            "{{\"mode\": \"{}\", \"pid\": {}, \"paused_until\": {}}}\n",
+            self.mode, self.pid, pause_val
+        );
+        let _ = std::fs::write(&path, json);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        if let Some(ts) = self.paused_until {
+            Utc::now().timestamp() < ts
+        } else {
+            false
+        }
+    }
+
+    pub fn remaining_secs(&self) -> Option<i64> {
+        if let Some(ts) = self.paused_until {
+            let diff = ts - Utc::now().timestamp();
+            if diff > 0 {
+                Some(diff)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_duration(s: &str) -> Result<i64> {
+        let s = s.trim().to_lowercase();
+        if s.ends_with('h') {
+            let num: i64 = s[..s.len() - 1].parse()?;
+            Ok(num * 3600)
+        } else if s.ends_with('m') {
+            let num: i64 = s[..s.len() - 1].parse()?;
+            Ok(num * 60)
+        } else if s.ends_with('s') {
+            let num: i64 = s[..s.len() - 1].parse()?;
+            Ok(num)
+        } else if s.ends_with('d') {
+            let num: i64 = s[..s.len() - 1].parse()?;
+            Ok(num * 86400)
+        } else {
+            let num: i64 = s.parse()?;
+            Ok(num)
+        }
+    }
+}
 
 extern "C" fn handle_sigint_term(_: libc::c_int) {
     RUNNING.store(false, Ordering::SeqCst);
@@ -35,7 +139,7 @@ pub struct Daemon {
 impl Daemon {
     pub fn new(config_path: PathBuf) -> Result<Self> {
         let config = Config::load_or_default(&config_path)?;
-        let state_file = Self::get_state_path();
+        let state_file = DaemonState::file_path();
         Ok(Self {
             config_path,
             config,
@@ -44,21 +148,14 @@ impl Daemon {
         })
     }
 
-    fn get_state_path() -> PathBuf {
-        if let Some(dirs) = directories::BaseDirs::new() {
-            dirs.data_local_dir().join("solard").join("state.json")
-        } else {
-            PathBuf::from("/tmp/solard.state")
-        }
-    }
-
     fn save_state(&self, mode: ThemeMode) {
-        if let Some(parent) = self.state_file.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let pid = std::process::id();
-        let json = format!("{{\"mode\": \"{}\", \"pid\": {}}}\n", mode.as_str(), pid);
-        let _ = std::fs::write(&self.state_file, json);
+        let existing_pause = DaemonState::load().and_then(|s| s.paused_until);
+        let state = DaemonState {
+            mode: mode.as_str().to_string(),
+            pid: std::process::id(),
+            paused_until: existing_pause,
+        };
+        state.save();
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -108,15 +205,24 @@ impl Daemon {
                 self.save_state(toggled);
             }
 
-            // Determine if theme should switch based on schedule/sun
-            let target_mode = self.determine_mode();
-            if Some(target_mode) != self.current_mode {
-                log::info!("Schedule event reached: transitioning to {}", target_mode);
-                if let Err(e) = manager.apply_all(target_mode) {
-                    log::error!("Failed to apply target theme: {:#}", e);
+            // Check pause status
+            let is_paused = DaemonState::load()
+                .map(|s| s.is_paused())
+                .unwrap_or(false);
+
+            if is_paused {
+                log::debug!("Theme auto-switching is currently paused/inhibited");
+            } else {
+                // Determine if theme should switch based on schedule/sun
+                let target_mode = self.determine_mode();
+                if Some(target_mode) != self.current_mode {
+                    log::info!("Schedule event reached: transitioning to {}", target_mode);
+                    if let Err(e) = manager.apply_all(target_mode) {
+                        log::error!("Failed to apply target theme: {:#}", e);
+                    }
+                    self.current_mode = Some(target_mode);
+                    self.save_state(target_mode);
                 }
-                self.current_mode = Some(target_mode);
-                self.save_state(target_mode);
             }
 
             // Sleep in small increments (e.g. 5 seconds) to remain responsive to signals and suspend/resume

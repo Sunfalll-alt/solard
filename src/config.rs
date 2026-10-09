@@ -8,8 +8,13 @@ pub struct Config {
     pub schedule: ScheduleConfig,
     pub gnome: GnomeConfig,
     pub kitty: KittyConfig,
+    pub alacritty: AlacrittyConfig,
+    pub foot: FootConfig,
+    pub vscode: VsCodeConfig,
+    pub neovim: NeovimConfig,
     pub qt: QtConfig,
     pub gammastep: GammastepConfig,
+    pub notifications: NotificationsConfig,
     pub hooks: HooksConfig,
 }
 
@@ -84,6 +89,38 @@ pub struct KittyConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct AlacrittyConfig {
+    pub enabled: bool,
+    pub theme_light: Option<String>,
+    pub theme_dark: Option<String>,
+    pub symlink_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FootConfig {
+    pub enabled: bool,
+    pub theme_light: Option<String>,
+    pub theme_dark: Option<String>,
+    pub symlink_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VsCodeConfig {
+    pub enabled: bool,
+    pub theme_light: String,
+    pub theme_dark: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NeovimConfig {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct QtConfig {
     pub enabled: bool,
     /// Kvantum theme names
@@ -108,6 +145,12 @@ pub struct GammastepConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct NotificationsConfig {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HooksConfig {
     /// Command or script to execute when switching to light theme
     pub on_light: Option<String>,
@@ -118,7 +161,7 @@ pub struct HooksConfig {
 impl Default for LocationConfig {
     fn default() -> Self {
         Self {
-            latitude: 59.9343, // Saint Petersburg default (user can change in config)
+            latitude: 59.9343, // Saint Petersburg default
             longitude: 30.3351,
             zenith: 90.83333333333333,
             sunrise_offset_minutes: 0,
@@ -167,6 +210,46 @@ impl Default for KittyConfig {
     }
 }
 
+impl Default for AlacrittyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            theme_light: None,
+            theme_dark: None,
+            symlink_path: "~/.config/alacritty/current-theme.toml".to_string(),
+        }
+    }
+}
+
+impl Default for FootConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            theme_light: None,
+            theme_dark: None,
+            symlink_path: "~/.config/foot/current-theme.ini".to_string(),
+        }
+    }
+}
+
+impl Default for VsCodeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            theme_light: "Default Light Modern".to_string(),
+            theme_dark: "Default Dark Modern".to_string(),
+        }
+    }
+}
+
+impl Default for NeovimConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+        }
+    }
+}
+
 impl Default for QtConfig {
     fn default() -> Self {
         Self {
@@ -182,10 +265,18 @@ impl Default for QtConfig {
 impl Default for GammastepConfig {
     fn default() -> Self {
         Self {
-            enabled: false, // Default false because GNOME has built-in Night Light on Wayland
+            enabled: false,
             temp_day: 6500,
             temp_night: 3500,
             method: "oneshot".to_string(),
+        }
+    }
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
         }
     }
 }
@@ -206,8 +297,13 @@ impl Default for Config {
             schedule: ScheduleConfig::default(),
             gnome: GnomeConfig::default(),
             kitty: KittyConfig::default(),
+            alacritty: AlacrittyConfig::default(),
+            foot: FootConfig::default(),
+            vscode: VsCodeConfig::default(),
+            neovim: NeovimConfig::default(),
             qt: QtConfig::default(),
             gammastep: GammastepConfig::default(),
+            notifications: NotificationsConfig::default(),
             hooks: HooksConfig::default(),
         }
     }

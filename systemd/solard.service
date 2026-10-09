@@ -1,0 +1,18 @@
+[Unit]
+Description=Solard - Dynamic Solar & Scheduled Theme Daemon
+Documentation=https://github.com/Sunfalll-alt/solard
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/solard daemon
+Restart=on-failure
+RestartSec=5s
+
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_CURRENT_DESKTOP=GNOME
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=graphical-session.target

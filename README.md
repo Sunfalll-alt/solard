@@ -1,8 +1,8 @@
-# ☀️🌙 Solard — Демон автоматического переключения светлой/темной темы
+# ☀️🌙 Solard — Демон автоматического переключения тем оформления
 
-**Solard** — это легковесный, быстрый и модульный демон на **Rust** для **любых Linux-дистрибутивов** (Arch Linux, Ubuntu, Debian, Linux Mint, Fedora и др.), синхронно переключающий оформление системы по положению солнца (восход/закат по координатам) или по заданному расписанию.
+**Solard** — это легковесный, высокопроизводительный демон на **Rust** для **любых Linux-дистрибутивов** (Arch Linux, Ubuntu, Debian, Linux Mint, Fedora и др.), синхронно переключающий оформление всей системы по положению солнца (восход/закат по координатам) или по расписанию.
 
-Автоматически определяет ваше графическое окружение (**GNOME**, **Cinnamon / Linux Mint**, **KDE Plasma**, **XFCE**, **MATE**) и тип сессии (**Wayland** или **X11**).
+Автоматически определяет ваше рабочее окружение (**GNOME**, **Cinnamon / Linux Mint**, **KDE Plasma**, **XFCE**, **MATE**), тип сессии (**Wayland** или **X11**), терминалы (**Kitty**, **Alacritty**, **Foot**) и редакторы кода (**VS Code**, **Neovim**).
 
 ---
 
@@ -11,100 +11,153 @@
 1. **Точный астрономический расчет (NOAA Solar Algorithm)**:
    - Вычисляет точное время восхода и заката для заданных координат (широта и долгота).
    - Поддерживает официальный восход/закат (зенит 90.83°) или гражданские сумерки (96.0°).
-   - Поддерживает смещение по времени (например, переключить за 15 минут до заката).
-   - Корректно обрабатывает полярный день и полярную ночь.
-   - Поддерживает альтернативный режим фиксированного времени (например, день с 07:30, ночь с 20:30).
-   - Астрономический расчет фаз Луны (новолуние, четверти, полнолуние с % освещенности) и точного времени её захода.
+   - Смещение по времени (например, переключить за 15 минут до заката).
+   - Корректная обработка полярного дня и полярной ночи.
+   - Альтернативный режим фиксированного времени (например, день с 07:30, ночь с 20:30).
+   - Расчет фаз Луны (новолуние, четверти, полнолуние с % освещенности) и точного времени её захода.
 
-2. **Поддержка рабочих окружений (DE) и сессий Wayland / X11**:
-   - **GNOME** (Ubuntu, Debian, Fedora, Arch): переключение `color-scheme` (Portal / libadwaita), `gtk-theme`, обоев и встроенного Night Light.
+2. **Автоопределение координат по IP**:
+   - Быстрое определение ваших координат, города, страны и часового пояса без ручного ввода (`solard locate` или в меню).
+
+3. **Режим паузы / ингибирования (Pause / Inhibit)**:
+   - Приостановка автоматической смены тем на время презентаций, просмотра фильмов или игр (`solard pause 2h`, `solard resume` или через меню).
+
+4. **Системные уведомления**:
+   - Нативные уведомления через `notify-send` при переключении темы с информацией о фазе Луны, проценте освещенности и времени дня/ночи.
+
+5. **Поддержка рабочих окружений (DE) и сессий Wayland / X11**:
+   - **GNOME** (Ubuntu, Debian, Fedora, Arch): переключение `color-scheme` (Portal / libadwaita), `gtk-theme`, обоев и аппаратного Wayland Night Light.
    - **Cinnamon** (Linux Mint): переключение `org.cinnamon.desktop.interface` (GTK, темы оболочки Cinnamon, обоев и color-scheme).
    - **KDE Plasma** (Kubuntu, Debian, Arch): вызовы `plasma-apply-colorscheme`, `plasma-apply-lookandfeel`, обоев.
-   - **XFCE** (Xubuntu, Mint XFCE): переключение тем через `xfconf-query` (xsettings и xfce4-desktop).
-   - **MATE** (Ubuntu MATE, Mint MATE): переключение `org.mate.interface` и фона рабочего стола.
+   - **XFCE** (Xubuntu, Mint XFCE): темы через `xfconf-query` (xsettings и xfce4-desktop).
+   - **MATE** (Ubuntu MATE, Mint MATE): `org.mate.interface` и фон рабочего стола.
 
-3. **Браузеры (Firefox, Chrome, Chromium)**:
-   - В сессиях с FreeDesktop Appearance Portal (`xdg-desktop-portal`) браузеры мгновенно переключают темы сайтов (`@media (prefers-color-scheme: dark/light)`) и интерфейс без необходимости сторонних расширений.
+6. **Терминалы (Kitty, Alacritty, Foot)**:
+   - **Kitty**: атомарное обновление симлинка `current-theme.conf` и мгновенный `SIGUSR1` релоад без перезапуска терминала.
+   - **Alacritty**: атомарное переключение файла конфигурации.
+   - **Foot**: атомарное переключение темы и сигнал `SIGUSR1` для мгновенного обновления.
 
-4. **Терминал Kitty**:
-   - Атомарное обновление символической ссылки `~/.config/kitty/current-theme.conf`.
-   - Мгновенная перезагрузка палитры во всех открытых окнах Kitty без перезапуска терминала с помощью сигнала `SIGUSR1` (`pkill -SIGUSR1 kitty`).
-   - Опциональная поддержка Kitty Remote Control (`kitty @ set-colors`).
+7. **Редакторы кода (VS Code, Neovim)**:
+   - **VS Code / VSCodium / Code OSS**: автоматическая замена `workbench.colorTheme` в `settings.json`.
+   - **Neovim**: передача команды `set background=light/dark` на лету через RPC UNIX-сокеты во все запущенные сессии `nvim`.
 
-5. **Qt (Kvantum & qt6ct)**:
-   - Синхронное переключение тем Kvantum (`kvantummanager --set <theme>` или `kvconfig`).
+8. **Браузеры (Firefox, Chrome, Chromium)**:
+   - Через FreeDesktop Appearance Portal (`xdg-desktop-portal`) браузеры на лету адаптируют тему сайтов (`@media (prefers-color-scheme: dark/light)`).
+
+9. **Qt (Kvantum & qt6ct)**:
+   - Синхронное переключение тем Kvantum (`kvantummanager --set <theme>`).
    - Синхронизация цветовой палитры в `qt6ct.conf`.
 
-6. **Gammastep / Redshift**:
-   - Опциональное управление температурой экрана (`gammastep -O <temp>` или управление через systemd-юнит `gammastep.service`).
+10. **Gammastep / Redshift**:
+    - Управление температурой экрана (`gammastep -O <temp>` или через `gammastep.service`).
 
-7. **Пользовательские хуки (Hooks)**:
-   - Запуск произвольных скриптов/команд при переходе в режим дня и ночи с передачей переменных окружения `$SOLARD_MODE`, `$SOLARD_LATITUDE`, `$SOLARD_LONGITUDE`.
+11. **Слепок настроек и безопасный откат (Snapshot & Restore)**:
+    - При первом старте сохраняет исходный профиль системы, а при `solard stop` автоматически восстанавливает все параметры до единого.
 
 ---
 
-## 📦 Установка в различных дистрибутивах
+## 📦 Установка
 
-### 1. Установка зависимостей сборки
+### 1. Arch Linux (AUR)
+Пакет доступен в Arch User Repository:
+```bash
+# С помощью yay
+yay -S solard
 
-- **Arch Linux / Manjaro**:
+# Или с помощью paru
+paru -S solard
+```
+
+Либо ручная сборка из `PKGBUILD`:
+```bash
+git clone https://github.com/Sunfalll-alt/solard.git
+cd solard
+makepkg -si
+```
+
+### 2. Сборка из исходников (Ubuntu, Debian, Mint, Fedora, Arch)
+
+#### Установка зависимостей:
+- **Arch / Manjaro**:
   ```bash
-  sudo pacman -S --needed base-devel rust cargo kitty libnotify
+  sudo pacman -S --needed base-devel rust cargo curl libnotify
   ```
-
 - **Ubuntu / Debian / Linux Mint**:
   ```bash
-  sudo apt update && sudo apt install -y build-essential cargo rustc kitty libnotify-bin
+  sudo apt update && sudo apt install -y build-essential cargo rustc curl libnotify-bin
   ```
-
 - **Fedora**:
   ```bash
-  sudo dnf install -y gcc cargo rust kitty libnotify
+  sudo dnf install -y gcc cargo rust curl libnotify
   ```
 
-### 2. Сборка и установка бинарника
+#### Сборка и установка:
 ```bash
 git clone https://github.com/Sunfalll-alt/solard.git
 cd solard
 cargo build --release
 cargo install --path .
 ```
-Бинарник установится в `~/.cargo/bin/solard`. Убедитесь, что `~/.cargo/bin` добавлен в вашу переменную `$PATH` (обычно в `~/.bashrc` или `~/.zshrc`):
+Убедитесь, что `~/.cargo/bin` добавлен в ваш `$PATH`:
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 ---
 
-## ⚙️ Настройка
+## 🛠 Команды управления (CLI)
 
-### 1. Создание конфигурационного файла
-Выполните команду для создания файла конфигурации по умолчанию:
+```bash
+# Интерактивное TUI-меню со стрелочками и редактором конфигурации
+solard
+solard menu
+
+# Автоматическое определение координат по IP и запись в конфиг
+solard locate
+
+# Приостановить авто-смену тем (по умолчанию 2 часа, можно 30m, 4h, 1d)
+solard pause 2h
+solard resume      # Возобновить смену тем
+
+# Текущий статус, расписание солнца, фазы луны и таймер
+solard status
+
+# Астрономическая таблица восходов и заходов луны на 7 дней
+solard calc
+
+# Переключение тем вручную
+solard set light   # Включить день
+solard set dark    # Включить ночь
+solard toggle      # Инвертировать текущую тему
+
+# Управление автозапуском Systemd
+solard enable      # Включить службу при входе в систему
+solard disable     # Отключить службу
+
+# Остановка демона с возвратом исходных настроек системы
+solard stop
+```
+
+---
+
+## ⚙️ Конфигурация (`~/.config/solard/config.toml`)
+
+Инициализация файла настроек по умолчанию:
 ```bash
 solard init-config
 ```
-Конфигурация сохранится в `~/.config/solard/config.toml`.
 
-### 2. Редактирование `~/.config/solard/config.toml`
-Пример файла конфигурации:
-
+### Пример конфигурации:
 ```toml
 [location]
-# Ваши географические координаты (Широта и Долгота)
-# Пример: Санкт-Петербург
 latitude = 59.9343
 longitude = 30.3351
-
-# 90.8333 = восход/закат, 96.0 = сумерки
 zenith = 90.8333
-
-# Смещение (в минутах) относительно заката/восхода
 sunrise_offset_minutes = 0
 sunset_offset_minutes = 0
 
 [schedule]
-# "solar" (по солнцу) или "fixed" (по часам)
-mode = "solar"
+mode = "solar" # "solar" или "fixed"
 fixed_light_time = "07:30"
 fixed_dark_time = "20:30"
 check_interval_secs = 60
@@ -114,12 +167,8 @@ enabled = true
 set_color_scheme = true
 gtk_theme_light = "Adwaita"
 gtk_theme_dark = "Adwaita-dark"
-
-# Пути к обоям:
 # wallpaper_light = "~/Pictures/day.jpg"
 # wallpaper_dark = "~/Pictures/night.jpg"
-
-# Включение аппаратного ночного света GNOME Wayland ночью:
 control_gnome_night_light = true
 
 [kitty]
@@ -128,7 +177,29 @@ theme_light = "~/.config/kitty/themes/solarized-light.conf"
 theme_dark = "~/.config/kitty/themes/solarized-dark.conf"
 symlink_path = "~/.config/kitty/current-theme.conf"
 send_sigusr1 = true
-use_remote_control = false
+
+[alacritty]
+enabled = false
+theme_light = "~/.config/alacritty/themes/light.toml"
+theme_dark = "~/.config/alacritty/themes/dark.toml"
+symlink_path = "~/.config/alacritty/theme.toml"
+
+[foot]
+enabled = false
+theme_light = "~/.config/foot/themes/light.ini"
+theme_dark = "~/.config/foot/themes/dark.ini"
+symlink_path = "~/.config/foot/theme.ini"
+
+[vscode]
+enabled = false
+theme_light = "Default Light Modern"
+theme_dark = "Default Dark Modern"
+
+[neovim]
+enabled = false
+
+[notifications]
+enabled = true
 
 [qt]
 enabled = true
@@ -136,109 +207,42 @@ enabled = true
 # kvantum_theme_dark = "KvFlatDark"
 
 [gammastep]
-# В GNOME Wayland рекомендуется использовать control_gnome_night_light = true
 enabled = false
 temp_day = 6500
 temp_night = 3500
 method = "oneshot"
 
 [hooks]
-# on_light = "notify-send 'Solard' 'Включена светлая тема'"
-# on_dark = "notify-send 'Solard' 'Включена темная тема'"
+# on_light = "notify-send 'Solard' 'Day mode activated'"
+# on_dark = "notify-send 'Solard' 'Night mode activated'"
 ```
 
-### 3. Настройка Kitty Terminal
-Чтобы Kitty подхватывал тему динамически:
-1. Создайте папку для тем и скопируйте темы:
-   ```bash
-   mkdir -p ~/.config/kitty/themes
-   cp examples/kitty/solarized-light.conf ~/.config/kitty/themes/
-   cp examples/kitty/solarized-dark.conf ~/.config/kitty/themes/
-   ```
-2. В конце файла `~/.config/kitty/kitty.conf` добавьте строку:
-   ```conf
-   include current-theme.conf
-   ```
-   *Демон автоматически создает и обновляет симлинк `~/.config/kitty/current-theme.conf` и отправляет `SIGUSR1`, благодаря чему цвета обновляются прямо на лету!*
+---
+
+## 🔄 Системная служба Systemd (Autostart)
+
+Для автозапуска при входе в систему достаточно выполнить:
+```bash
+solard enable
+```
+Команда автоматически создаст и активирует пользовательский юнит `solard.service`.
+
+Проверка статуса:
+```bash
+systemctl --user status solard.service
+journalctl --user -u solard.service -f
+```
 
 ---
 
-## 🛠 Команды управления (CLI)
-
-- **Интерактивное консольное меню (TUI в стиле Antigravity CLI)**:
-  ```bash
-  solard          # или solard menu
-  ```
-  *(Красочное интерактивное меню с ASCII-артом, живым статусом демона и солнца, навигацией стрелками ↑/↓, клавишами 1-9 и встроенным интерактивным редактором настроек).*
-
-- **Просмотр текущего состояния и расписания солнца**:
-  ```bash
-  solard status
-  ```
-- **Астрономический график солнца и луны на 7 дней (восход, закат, фазы и заход луны)**:
-  ```bash
-  solard calc
-  ```
-- **Принудительно переключить тему вручную**:
-  ```bash
-  solard set light   # Включить светлую тему
-  solard set dark    # Включить темную тему
-  solard toggle      # Инвертировать текущую тему
-  ```
-  *(Если демон запущен, команда `toggle` мгновенно отправляет ему сигнал `SIGUSR1`).*
-
-- **Запуск демона вручную (в текущем терминале)**:
-  ```bash
-  solard daemon
-  ```
-- **Управление автозапуском (Systemd)**:
-  ```bash
-  solard enable      # Включить автозапуск при входе в систему
-  solard disable     # Отключить автозапуск и остановить сервис
-  ```
-- **Остановка запущенного демона (с восстановлением исходных настроек)**:
-  ```bash
-  solard stop
-  ```
-  *(При первом запуске демон автоматически сохраняет слепок ваших исходных настроек системы и терминала, а при вызове `solard stop` или остановке службы автоматически возвращает всё в исходное состояние).*
-
----
-
-## 🔄 Настройка автозапуска через Systemd
-
-Для запуска демона вместе со входом в сессию GNOME:
-
-1. Скопируйте файл сервиса:
-   ```bash
-   mkdir -p ~/.config/systemd/user
-   cp solard.service ~/.config/systemd/user/
-   ```
-
-2. Перезагрузите конфигурацию systemd и включите сервис:
-   ```bash
-   systemctl --user daemon-reload
-   systemctl --user enable --now solard.service
-   ```
-
-3. Проверка статуса:
-   ```bash
-   systemctl --user status solard.service
-   journalctl --user -u solard.service -f
-   ```
-
-4. Остановка и отключение автозапуска:
-   ```bash
-   # Временно остановить:
-   systemctl --user stop solard.service
-
-   # Отключить автозапуск:
-   systemctl --user disable --now solard.service
-   ```
-
----
-
-## 💡 Полезные сигналы процесса
+## 💡 Сигналы процесса
 
 - `SIGUSR1` — мгновенное переключение текущей темы (Light ⟷ Dark).
 - `SIGHUP` — перезагрузка файла конфигурации `config.toml` без перезапуска демона.
-- `SIGINT` / `SIGTERM` — корректное завершение работы.
+- `SIGINT` / `SIGTERM` — корректная остановка и восстановление системного снапшота.
+
+---
+
+## 📄 Лицензия
+
+MIT License (c) 2026 Sunfalll-alt
