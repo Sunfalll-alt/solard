@@ -1,10 +1,10 @@
-use crate::config::Config;
+use crate::config::{Config, ScheduleMode};
 use crate::daemon::Daemon;
 use crate::solar::{SolarCalculator, SolarTimes};
 use crate::switcher::ThemeManager;
 use crate::theme::ThemeMode;
 use chrono::{DateTime, Local, Utc};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -41,11 +41,11 @@ impl InteractiveMenu {
                     if self.selected_index > 0 {
                         self.selected_index -= 1;
                     } else {
-                        self.selected_index = 7; // wrap to bottom
+                        self.selected_index = 8; // wrap to bottom
                     }
                 }
                 Key::Down => {
-                    if self.selected_index < 7 {
+                    if self.selected_index < 8 {
                         self.selected_index += 1;
                     } else {
                         self.selected_index = 0; // wrap to top
@@ -64,6 +64,7 @@ impl InteractiveMenu {
                 Key::Char('6') => { if self.handle_action(5)? { break; } }
                 Key::Char('7') => { if self.handle_action(6)? { break; } }
                 Key::Char('8') => { if self.handle_action(7)? { break; } }
+                Key::Char('9') => { if self.handle_action(8)? { break; } }
                 Key::Quit | Key::Char('q') => break,
                 _ => {}
             }
@@ -98,6 +99,7 @@ impl InteractiveMenu {
         println!("\x1b[1;37m┌─────────────────── ТЕКУЩИЙ СТАТУС ────────────────────┐\x1b[0m");
         println!("│ Демон:       {:<40} │", daemon_info);
         println!("│ Тема сейчас: {:<40} │", solar_info.current_theme);
+        println!("│ Режим:       {:<40} │", format!("{:?}", config.schedule.mode));
         println!("│ Солнце:      {:<40} │", solar_info.sun_times);
         println!("│ Следующее:   {:<40} │", solar_info.next_event);
         println!("│ Координаты:  {:<40} │", format!("{:.2}° N, {:.2}° E", config.location.latitude, config.location.longitude));
@@ -112,17 +114,18 @@ impl InteractiveMenu {
             ("5", "📅  Таблица восходов на 7 дней (Calc)", "Астрономический график солнца на неделю"),
             ("6", "🚀  Запустить демон в фоне (Systemd)", "Включить автопереключение по солнцу"),
             ("7", "⏹️   Остановить демон (Restore)", "Остановить и вернуть изначальные настройки"),
-            ("8", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
+            ("8", "⚙️   Настройки и конфигурация (Config)", "Изменить координаты, темы, обои, редактор"),
+            ("9", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
         ];
 
-        println!("\x1b[1mВыберите действие (стрелки ↑/↓ или клавиши 1-8):\x1b[0m\n");
+        println!("\x1b[1mВыберите действие (стрелки ↑/↓ или клавиши 1-9):\x1b[0m\n");
 
         for (i, (num, title, desc)) in options.iter().enumerate() {
             if i == self.selected_index {
                 // Highlighted row with background color
-                println!("  \x1b[1;30;46m ▶ [{}] {:<40} \x1b[0m \x1b[90m({})\x1b[0m", num, title, desc);
+                println!("  \x1b[1;30;46m ▶ [{}] {:<42} \x1b[0m \x1b[90m({})\x1b[0m", num, title, desc);
             } else {
-                println!("    \x1b[1;37m[{}]\x1b[0m {:<42} \x1b[90m({})\x1b[0m", num, title, desc);
+                println!("    \x1b[1;37m[{}]\x1b[0m {:<44} \x1b[90m({})\x1b[0m", num, title, desc);
             }
         }
 
@@ -132,7 +135,7 @@ impl InteractiveMenu {
         Ok(())
     }
 
-    fn handle_action(&self, index: usize) -> anyhow::Result<bool> {
+    fn handle_action(&mut self, index: usize) -> anyhow::Result<bool> {
         // Temporarily leave raw mode for clean command output
         print!("\x1b[2J\x1b[1;1H\x1b[?25h");
         io::stdout().flush()?;
@@ -197,6 +200,10 @@ impl InteractiveMenu {
                 Self::pause_prompt();
             }
             7 => {
+                // Config Editor Submenu
+                self.run_config_editor()?;
+            }
+            8 => {
                 return Ok(true); // Exit
             }
             _ => {}
@@ -205,10 +212,246 @@ impl InteractiveMenu {
         Ok(false)
     }
 
+    /// Interactive Config Editor Submenu
+    fn run_config_editor(&self) -> anyhow::Result<()> {
+        loop {
+            let mut config = Config::load_or_default(&self.config_path).unwrap_or_default();
+
+            print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+            println!("\x1b[1;36m═════════════════════════════════════════════════════════\x1b[0m");
+            println!("           \x1b[1;33m⚙️  РЕДАКТОР НАСТРОЕК SOLARD  ⚙️\x1b[0m");
+            println!("\x1b[1;36m═════════════════════════════════════════════════════════\x1b[0m\n");
+
+            println!("\x1b[1;37m┌────────────────── ТЕКУЩАЯ КОНФИГУРАЦИЯ ─────────────────┐\x1b[0m");
+            println!("│ Режим расписания: {:<37} │", format!("{:?}", config.schedule.mode));
+            println!("│ Координаты:       {:<37} │", format!("{:.4}° N, {:.4}° E", config.location.latitude, config.location.longitude));
+            println!("│ Фикс. время дня:  {:<37} │", format!("Свет: {} / Тьма: {}", config.schedule.fixed_light_time, config.schedule.fixed_dark_time));
+            println!("│ Kitty Light тема: {:<37} │", config.kitty.theme_light.as_deref().unwrap_or("-"));
+            println!("│ Kitty Dark тема:  {:<37} │", config.kitty.theme_dark.as_deref().unwrap_or("-"));
+            println!("│ Обои (День):      {:<37} │", config.gnome.wallpaper_light.as_deref().unwrap_or("(не заданы)"));
+            println!("│ Обои (Ночь):      {:<37} │", config.gnome.wallpaper_dark.as_deref().unwrap_or("(не заданы)"));
+            println!("│ Файл на диске:    {:<37} │", self.config_path.display().to_string().chars().take(37).collect::<String>());
+            println!("\x1b[1;37m└─────────────────────────────────────────────────────────┘\x1b[0m\n");
+
+            println!("\x1b[1mВыберите, что хотите настроить:\x1b[0m");
+            println!("  \x1b[1;36m[1]\x1b[0m 📍 Изменить координаты (Широта / Долгота или быстрые пресеты)");
+            println!("  \x1b[1;36m[2]\x1b[0m ⏱️  Переключить режим (По солнцу ⟷ Фиксированное время)");
+            println!("  \x1b[1;36m[3]\x1b[0m 🐱 Настроить темы для терминала Kitty");
+            println!("  \x1b[1;36m[4]\x1b[0m 🖼️  Настроить обои GNOME (Светлые / Тёмные)");
+            println!("  \x1b[1;36m[5]\x1b[0m 📝 Открыть config.toml в текстовом редакторе ($EDITOR)");
+            println!("  \x1b[1;36m[6]\x1b[0m 🔄 Сбросить конфиг до значений по умолчанию");
+            println!("  \x1b[1;31m[0]\x1b[0m ↩️  Назад в главное меню\n");
+
+            print!("\x1b[1mВаш выбор [0-6]: \x1b[0m");
+            io::stdout().flush()?;
+
+            let choice = Self::read_line_input();
+            match choice.trim() {
+                "1" => {
+                    self.edit_location(&mut config)?;
+                }
+                "2" => {
+                    self.edit_schedule_mode(&mut config)?;
+                }
+                "3" => {
+                    self.edit_kitty_themes(&mut config)?;
+                }
+                "4" => {
+                    self.edit_wallpapers(&mut config)?;
+                }
+                "5" => {
+                    self.open_in_editor()?;
+                }
+                "6" => {
+                    print!("\x1b[1;33mВы уверены, что хотите сбросить настройки? (y/N): \x1b[0m");
+                    io::stdout().flush()?;
+                    if Self::read_line_input().trim().eq_ignore_ascii_case("y") {
+                        let def = Config::default();
+                        def.save(&self.config_path)?;
+                        self.notify_daemon_reload();
+                        println!("\x1b[1;32m✔ Конфиг сброшен до значений по умолчанию!\x1b[0m");
+                        Self::pause_prompt();
+                    }
+                }
+                "0" | "q" | "" => break,
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    fn edit_location(&self, config: &mut Config) -> anyhow::Result<()> {
+        println!("\n\x1b[1;36m--- Выбор координат ---\x1b[0m");
+        println!("Быстрые пресеты городов:");
+        println!("  1. Санкт-Петербург (59.9343, 30.3351)");
+        println!("  2. Москва           (55.7558, 37.6173)");
+        println!("  3. Новосибирск      (55.0084, 82.9357)");
+        println!("  4. Екатеринбург     (56.8389, 60.6057)");
+        println!("  5. Казань           (55.8304, 49.0661)");
+        println!("  6. Ввести координаты вручную");
+        print!("\nВыберите вариант [1-6] (Enter для отмены): ");
+        io::stdout().flush()?;
+
+        let opt = Self::read_line_input();
+        match opt.trim() {
+            "1" => { config.location.latitude = 59.9343; config.location.longitude = 30.3351; }
+            "2" => { config.location.latitude = 55.7558; config.location.longitude = 37.6173; }
+            "3" => { config.location.latitude = 55.0084; config.location.longitude = 82.9357; }
+            "4" => { config.location.latitude = 56.8389; config.location.longitude = 60.6057; }
+            "5" => { config.location.latitude = 55.8304; config.location.longitude = 49.0661; }
+            "6" => {
+                print!("Введите широту (Latitude, например 59.9343): ");
+                io::stdout().flush()?;
+                if let Ok(lat) = Self::read_line_input().trim().parse::<f64>() {
+                    config.location.latitude = lat;
+                }
+                print!("Введите долготу (Longitude, например 30.3351): ");
+                io::stdout().flush()?;
+                if let Ok(lon) = Self::read_line_input().trim().parse::<f64>() {
+                    config.location.longitude = lon;
+                }
+            }
+            _ => return Ok(()),
+        }
+
+        config.save(&self.config_path)?;
+        self.notify_daemon_reload();
+        println!("\x1b[1;32m✔ Координаты обновлены: Lat {:.4}, Lon {:.4}\x1b[0m", config.location.latitude, config.location.longitude);
+        Self::pause_prompt();
+        Ok(())
+    }
+
+    fn edit_schedule_mode(&self, config: &mut Config) -> anyhow::Result<()> {
+        println!("\n\x1b[1;36m--- Режим работы ---\x1b[0m");
+        println!("1. Solar (автоматически вычислять по положению солнца)");
+        println!("2. Fixed (фиксированное время по часам)");
+        print!("Выберите режим [1-2]: ");
+        io::stdout().flush()?;
+
+        match Self::read_line_input().trim() {
+            "1" => {
+                config.schedule.mode = ScheduleMode::Solar;
+            }
+            "2" => {
+                config.schedule.mode = ScheduleMode::Fixed;
+                print!("Время светлой темы (HH:MM, сейчас: {}): ", config.schedule.fixed_light_time);
+                io::stdout().flush()?;
+                let lt = Self::read_line_input();
+                if !lt.trim().is_empty() {
+                    config.schedule.fixed_light_time = lt.trim().to_string();
+                }
+
+                print!("Время тёмной темы (HH:MM, сейчас: {}): ", config.schedule.fixed_dark_time);
+                io::stdout().flush()?;
+                let dt = Self::read_line_input();
+                if !dt.trim().is_empty() {
+                    config.schedule.fixed_dark_time = dt.trim().to_string();
+                }
+            }
+            _ => return Ok(()),
+        }
+
+        config.save(&self.config_path)?;
+        self.notify_daemon_reload();
+        println!("\x1b[1;32m✔ Режим расписания успешно сохранен!\x1b[0m");
+        Self::pause_prompt();
+        Ok(())
+    }
+
+    fn edit_kitty_themes(&self, config: &mut Config) -> anyhow::Result<()> {
+        println!("\n\x1b[1;36m--- Настройка тем Kitty ---\x1b[0m");
+        print!("Путь к светлой теме (текущий: {}): ", config.kitty.theme_light.as_deref().unwrap_or("-"));
+        io::stdout().flush()?;
+        let l = Self::read_line_input();
+        if !l.trim().is_empty() {
+            config.kitty.theme_light = Some(l.trim().to_string());
+        }
+
+        print!("Путь к тёмной теме (текущий: {}): ", config.kitty.theme_dark.as_deref().unwrap_or("-"));
+        io::stdout().flush()?;
+        let d = Self::read_line_input();
+        if !d.trim().is_empty() {
+            config.kitty.theme_dark = Some(d.trim().to_string());
+        }
+
+        config.save(&self.config_path)?;
+        self.notify_daemon_reload();
+        println!("\x1b[1;32m✔ Пути к темам Kitty сохранены!\x1b[0m");
+        Self::pause_prompt();
+        Ok(())
+    }
+
+    fn edit_wallpapers(&self, config: &mut Config) -> anyhow::Result<()> {
+        println!("\n\x1b[1;36m--- Настройка обоев рабочего стола GNOME ---\x1b[0m");
+        print!("Путь к дневным обоям (текущий: {}): ", config.gnome.wallpaper_light.as_deref().unwrap_or("(нет)"));
+        io::stdout().flush()?;
+        let l = Self::read_line_input();
+        if !l.trim().is_empty() {
+            config.gnome.wallpaper_light = Some(l.trim().to_string());
+        }
+
+        print!("Путь к ночным обоям (текущий: {}): ", config.gnome.wallpaper_dark.as_deref().unwrap_or("(нет)"));
+        io::stdout().flush()?;
+        let d = Self::read_line_input();
+        if !d.trim().is_empty() {
+            config.gnome.wallpaper_dark = Some(d.trim().to_string());
+        }
+
+        config.save(&self.config_path)?;
+        self.notify_daemon_reload();
+        println!("\x1b[1;32m✔ Пути к обоям сохранены!\x1b[0m");
+        Self::pause_prompt();
+        Ok(())
+    }
+
+    fn open_in_editor(&self) -> anyhow::Result<()> {
+        let editor = std::env::var("EDITOR")
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| "nano".to_string());
+
+        println!("\x1b[1;36mЗапуск редактора '{}' для файла {:?}...\x1b[0m", editor, self.config_path);
+        let _ = Command::new(&editor)
+            .arg(&self.config_path)
+            .status();
+
+        self.notify_daemon_reload();
+        Ok(())
+    }
+
+    fn notify_daemon_reload(&self) {
+        // Send SIGHUP to running solard daemon to hot-reload config
+        let state_path = if let Some(dirs) = directories::BaseDirs::new() {
+            dirs.data_local_dir().join("solard").join("state.json")
+        } else {
+            PathBuf::from("/tmp/solard.state")
+        };
+
+        if state_path.exists() {
+            if let Ok(c) = std::fs::read_to_string(&state_path) {
+                if let Some(pid_str) = c.split("\"pid\":").nth(1) {
+                    if let Ok(pid) = pid_str.trim().trim_end_matches('}').trim().parse::<i32>() {
+                        unsafe {
+                            let _ = libc::kill(pid, libc::SIGHUP);
+                        }
+                        log::info!("Sent SIGHUP to solard daemon PID {}", pid);
+                    }
+                }
+            }
+        }
+    }
+
+    fn read_line_input() -> String {
+        let stdin = io::stdin();
+        let mut line = String::new();
+        let _ = stdin.lock().read_line(&mut line);
+        line
+    }
+
     fn pause_prompt() {
-        println!("\n\x1b[90mНажмите любую клавишу для возврата в меню...\x1b[0m");
-        let mut buf = [0u8; 1];
-        let _ = io::stdin().read(&mut buf);
+        println!("\n\x1b[90mНажмите Enter для продолжения...\x1b[0m");
+        let mut buf = String::new();
+        let _ = io::stdin().read_line(&mut buf);
     }
 
     fn get_daemon_status(&self) -> String {
