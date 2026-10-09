@@ -31,10 +31,10 @@ impl InteractiveMenu {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
-        let _raw_guard = RawTerminalGuard::new()?;
+        let raw_guard = RawTerminalGuard::new()?;
 
         loop {
-            self.draw()?;
+            self.draw_main()?;
 
             match Self::read_key() {
                 Key::Up => {
@@ -52,19 +52,19 @@ impl InteractiveMenu {
                     }
                 }
                 Key::Enter => {
-                    if self.handle_action(self.selected_index)? {
+                    if self.handle_main_action(self.selected_index, &raw_guard)? {
                         break;
                     }
                 }
-                Key::Char('1') => { if self.handle_action(0)? { break; } }
-                Key::Char('2') => { if self.handle_action(1)? { break; } }
-                Key::Char('3') => { if self.handle_action(2)? { break; } }
-                Key::Char('4') => { if self.handle_action(3)? { break; } }
-                Key::Char('5') => { if self.handle_action(4)? { break; } }
-                Key::Char('6') => { if self.handle_action(5)? { break; } }
-                Key::Char('7') => { if self.handle_action(6)? { break; } }
-                Key::Char('8') => { if self.handle_action(7)? { break; } }
-                Key::Char('9') => { if self.handle_action(8)? { break; } }
+                Key::Char('1') => { if self.handle_main_action(0, &raw_guard)? { break; } }
+                Key::Char('2') => { if self.handle_main_action(1, &raw_guard)? { break; } }
+                Key::Char('3') => { if self.handle_main_action(2, &raw_guard)? { break; } }
+                Key::Char('4') => { if self.handle_main_action(3, &raw_guard)? { break; } }
+                Key::Char('5') => { if self.handle_main_action(4, &raw_guard)? { break; } }
+                Key::Char('6') => { if self.handle_main_action(5, &raw_guard)? { break; } }
+                Key::Char('7') => { if self.handle_main_action(6, &raw_guard)? { break; } }
+                Key::Char('8') => { if self.handle_main_action(7, &raw_guard)? { break; } }
+                Key::Char('9') => { if self.handle_main_action(8, &raw_guard)? { break; } }
                 Key::Quit | Key::Char('q') => break,
                 _ => {}
             }
@@ -76,7 +76,7 @@ impl InteractiveMenu {
         Ok(())
     }
 
-    fn draw(&self) -> anyhow::Result<()> {
+    fn draw_main(&self) -> anyhow::Result<()> {
         let config = Config::load_or_default(&self.config_path).unwrap_or_default();
         let daemon_info = self.get_daemon_status();
         let solar_info = self.get_solar_info(&config);
@@ -114,7 +114,7 @@ impl InteractiveMenu {
             ("5", "📅  Таблица восходов на 7 дней (Calc)", "Астрономический график солнца на неделю"),
             ("6", "🚀  Запустить демон в фоне (Systemd)", "Включить автопереключение по солнцу"),
             ("7", "⏹️   Остановить демон (Restore)", "Остановить и вернуть изначальные настройки"),
-            ("8", "⚙️   Настройки и конфигурация (Config)", "Изменить координаты, темы, обои, редактор"),
+            ("8", "⚙️   Настройки и конфигурация (Config)", "Интерактивный редактор всех параметров"),
             ("9", "🚪  Выход из меню (Quit)", "Завершить работу меню"),
         ];
 
@@ -135,46 +135,62 @@ impl InteractiveMenu {
         Ok(())
     }
 
-    fn handle_action(&mut self, index: usize) -> anyhow::Result<bool> {
-        // Temporarily leave raw mode for clean command output
-        print!("\x1b[2J\x1b[1;1H\x1b[?25h");
-        io::stdout().flush()?;
-
-        let config = Config::load_or_default(&self.config_path).unwrap_or_default();
-        let manager = ThemeManager::new(&config);
-
+    fn handle_main_action(&mut self, index: usize, raw_guard: &RawTerminalGuard) -> anyhow::Result<bool> {
         match index {
             0 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                let config = Config::load_or_default(&self.config_path).unwrap_or_default();
+                let manager = ThemeManager::new(&config);
                 println!("\x1b[1;33m▶ Переключение на светлую тему...\x1b[0m");
                 manager.apply_all(ThemeMode::Light)?;
                 println!("\x1b[1;32m✔ Светлая тема успешно применена!\x1b[0m");
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             1 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                let config = Config::load_or_default(&self.config_path).unwrap_or_default();
+                let manager = ThemeManager::new(&config);
                 println!("\x1b[1;34m▶ Переключение на тёмную тему...\x1b[0m");
                 manager.apply_all(ThemeMode::Dark)?;
                 println!("\x1b[1;32m✔ Тёмная тема успешно применена!\x1b[0m");
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             2 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                let config = Config::load_or_default(&self.config_path).unwrap_or_default();
+                let manager = ThemeManager::new(&config);
                 let daemon = Daemon::new(self.config_path.clone())?;
                 let next = daemon.determine_mode().toggle();
                 println!("\x1b[1;35m▶ Инвертирование темы на {}...\x1b[0m", next);
                 manager.apply_all(next)?;
                 println!("\x1b[1;32m✔ Тема изменена на: {}\x1b[0m", next);
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             3 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;36m=== Подробный статус Solard ===\x1b[0m\n");
                 let _ = Command::new("solard").arg("status").status();
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             4 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;36m=== Астрономический график солнца на 7 дней ===\x1b[0m\n");
                 let _ = Command::new("solard").arg("calc").status();
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             5 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;32m▶ Запуск службы Systemd...\x1b[0m");
                 let status = Command::new("systemctl")
                     .args(["--user", "restart", "solard.service"])
@@ -192,16 +208,20 @@ impl InteractiveMenu {
                     }
                 }
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             6 => {
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
                 println!("\x1b[1;31m▶ Остановка демона и восстановление исходных настроек...\x1b[0m");
                 let _ = Command::new("solard").arg("stop").status();
                 println!("\x1b[1;32m✔ Исходные настройки восстановлены!\x1b[0m");
                 Self::pause_prompt();
+                raw_guard.enable_raw();
             }
             7 => {
-                // Config Editor Submenu
-                self.run_config_editor()?;
+                // Fully interactive config submenu with arrows!
+                self.run_interactive_config_editor(raw_guard)?;
             }
             8 => {
                 return Ok(true); // Exit
@@ -212,12 +232,26 @@ impl InteractiveMenu {
         Ok(false)
     }
 
-    /// Interactive Config Editor Submenu
-    fn run_config_editor(&self) -> anyhow::Result<()> {
-        loop {
-            let mut config = Config::load_or_default(&self.config_path).unwrap_or_default();
+    /// Fully interactive Config Editor with Arrow Keys navigation
+    fn run_interactive_config_editor(&self, raw_guard: &RawTerminalGuard) -> anyhow::Result<()> {
+        let mut editor_index = 0;
 
-            print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+        let options = [
+            ("1", "📍 Изменить координаты", "Широта / Долгота или быстрые пресеты городов"),
+            ("2", "⏱️  Режим расписания", "По положению солнца ⟷ Фиксированное время"),
+            ("3", "🐱 Темы для Kitty", "Пути к файлам светлой и тёмной темы"),
+            ("4", "🖼️  Обои GNOME", "Пути к дневным и ночным обоям"),
+            ("5", "📝 Открыть в $EDITOR", "Открыть config.toml в текстовом редакторе"),
+            ("6", "🔄 Сброс настроек", "Сбросить конфигурацию до значений по умолчанию"),
+            ("0", "↩️  Назад в главное меню", "Вернуться в основной экран"),
+        ];
+
+        loop {
+            let config = Config::load_or_default(&self.config_path).unwrap_or_default();
+
+            // Clear screen and hide cursor
+            print!("\x1b[2J\x1b[1;1H\x1b[?25l");
+
             println!("\x1b[1;36m═════════════════════════════════════════════════════════\x1b[0m");
             println!("           \x1b[1;33m⚙️  РЕДАКТОР НАСТРОЕК SOLARD  ⚙️\x1b[0m");
             println!("\x1b[1;36m═════════════════════════════════════════════════════════\x1b[0m\n");
@@ -233,47 +267,49 @@ impl InteractiveMenu {
             println!("│ Файл на диске:    {:<37} │", self.config_path.display().to_string().chars().take(37).collect::<String>());
             println!("\x1b[1;37m└─────────────────────────────────────────────────────────┘\x1b[0m\n");
 
-            println!("\x1b[1mВыберите, что хотите настроить:\x1b[0m");
-            println!("  \x1b[1;36m[1]\x1b[0m 📍 Изменить координаты (Широта / Долгота или быстрые пресеты)");
-            println!("  \x1b[1;36m[2]\x1b[0m ⏱️  Переключить режим (По солнцу ⟷ Фиксированное время)");
-            println!("  \x1b[1;36m[3]\x1b[0m 🐱 Настроить темы для терминала Kitty");
-            println!("  \x1b[1;36m[4]\x1b[0m 🖼️  Настроить обои GNOME (Светлые / Тёмные)");
-            println!("  \x1b[1;36m[5]\x1b[0m 📝 Открыть config.toml в текстовом редакторе ($EDITOR)");
-            println!("  \x1b[1;36m[6]\x1b[0m 🔄 Сбросить конфиг до значений по умолчанию");
-            println!("  \x1b[1;31m[0]\x1b[0m ↩️  Назад в главное меню\n");
+            println!("\x1b[1mВыберите параметр (стрелки ↑/↓ или клавиши 0-6):\x1b[0m\n");
 
-            print!("\x1b[1mВаш выбор [0-6]: \x1b[0m");
+            for (i, (num, title, desc)) in options.iter().enumerate() {
+                if i == editor_index {
+                    // Highlighted row with background color
+                    println!("  \x1b[1;30;43m ▶ [{}] {:<32} \x1b[0m \x1b[90m({})\x1b[0m", num, title, desc);
+                } else {
+                    println!("    \x1b[1;37m[{}]\x1b[0m {:<34} \x1b[90m({})\x1b[0m", num, title, desc);
+                }
+            }
+
+            println!("\n\x1b[90m[Enter] Выбрать  │  [q / Esc] Назад в меню  │  [j/k] Навигация\x1b[0m");
             io::stdout().flush()?;
 
-            let choice = Self::read_line_input();
-            match choice.trim() {
-                "1" => {
-                    self.edit_location(&mut config)?;
-                }
-                "2" => {
-                    self.edit_schedule_mode(&mut config)?;
-                }
-                "3" => {
-                    self.edit_kitty_themes(&mut config)?;
-                }
-                "4" => {
-                    self.edit_wallpapers(&mut config)?;
-                }
-                "5" => {
-                    self.open_in_editor()?;
-                }
-                "6" => {
-                    print!("\x1b[1;33mВы уверены, что хотите сбросить настройки? (y/N): \x1b[0m");
-                    io::stdout().flush()?;
-                    if Self::read_line_input().trim().eq_ignore_ascii_case("y") {
-                        let def = Config::default();
-                        def.save(&self.config_path)?;
-                        self.notify_daemon_reload();
-                        println!("\x1b[1;32m✔ Конфиг сброшен до значений по умолчанию!\x1b[0m");
-                        Self::pause_prompt();
+            match Self::read_key() {
+                Key::Up => {
+                    if editor_index > 0 {
+                        editor_index -= 1;
+                    } else {
+                        editor_index = 6;
                     }
                 }
-                "0" | "q" | "" => break,
+                Key::Down => {
+                    if editor_index < 6 {
+                        editor_index += 1;
+                    } else {
+                        editor_index = 0;
+                    }
+                }
+                Key::Enter => {
+                    if self.handle_editor_action(editor_index, raw_guard)? {
+                        break;
+                    }
+                }
+                Key::Char('1') => { if self.handle_editor_action(0, raw_guard)? { break; } }
+                Key::Char('2') => { if self.handle_editor_action(1, raw_guard)? { break; } }
+                Key::Char('3') => { if self.handle_editor_action(2, raw_guard)? { break; } }
+                Key::Char('4') => { if self.handle_editor_action(3, raw_guard)? { break; } }
+                Key::Char('5') => { if self.handle_editor_action(4, raw_guard)? { break; } }
+                Key::Char('6') => { if self.handle_editor_action(5, raw_guard)? { break; } }
+                Key::Char('0') | Key::Quit | Key::Char('q') => {
+                    break;
+                }
                 _ => {}
             }
         }
@@ -281,146 +317,267 @@ impl InteractiveMenu {
         Ok(())
     }
 
-    fn edit_location(&self, config: &mut Config) -> anyhow::Result<()> {
-        println!("\n\x1b[1;36m--- Выбор координат ---\x1b[0m");
-        println!("Быстрые пресеты городов:");
-        println!("  1. Санкт-Петербург (59.9343, 30.3351)");
-        println!("  2. Москва           (55.7558, 37.6173)");
-        println!("  3. Новосибирск      (55.0084, 82.9357)");
-        println!("  4. Екатеринбург     (56.8389, 60.6057)");
-        println!("  5. Казань           (55.8304, 49.0661)");
-        println!("  6. Ввести координаты вручную");
-        print!("\nВыберите вариант [1-6] (Enter для отмены): ");
-        io::stdout().flush()?;
+    fn handle_editor_action(&self, index: usize, raw_guard: &RawTerminalGuard) -> anyhow::Result<bool> {
+        let mut config = Config::load_or_default(&self.config_path).unwrap_or_default();
 
-        let opt = Self::read_line_input();
-        match opt.trim() {
-            "1" => { config.location.latitude = 59.9343; config.location.longitude = 30.3351; }
-            "2" => { config.location.latitude = 55.7558; config.location.longitude = 37.6173; }
-            "3" => { config.location.latitude = 55.0084; config.location.longitude = 82.9357; }
-            "4" => { config.location.latitude = 56.8389; config.location.longitude = 60.6057; }
-            "5" => { config.location.latitude = 55.8304; config.location.longitude = 49.0661; }
-            "6" => {
-                print!("Введите широту (Latitude, например 59.9343): ");
+        match index {
+            0 => {
+                // Location Picker
+                self.edit_location_interactive(&mut config, raw_guard)?;
+            }
+            1 => {
+                // Schedule Mode
+                self.edit_schedule_mode_interactive(&mut config, raw_guard)?;
+            }
+            2 => {
+                // Kitty themes
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                println!("\x1b[1;36m══════════ Настройка тем Kitty ══════════\x1b[0m\n");
+                println!("Текущая светлая тема: {}", config.kitty.theme_light.as_deref().unwrap_or("-"));
+                print!("Введите путь к светлой теме (Enter чтобы оставить): ");
                 io::stdout().flush()?;
-                if let Ok(lat) = Self::read_line_input().trim().parse::<f64>() {
-                    config.location.latitude = lat;
+                let l = Self::read_line_input();
+                if !l.trim().is_empty() {
+                    config.kitty.theme_light = Some(l.trim().to_string());
                 }
-                print!("Введите долготу (Longitude, например 30.3351): ");
+
+                println!("\nТекущая тёмная тема: {}", config.kitty.theme_dark.as_deref().unwrap_or("-"));
+                print!("Введите путь к тёмной теме (Enter чтобы оставить): ");
                 io::stdout().flush()?;
-                if let Ok(lon) = Self::read_line_input().trim().parse::<f64>() {
-                    config.location.longitude = lon;
+                let d = Self::read_line_input();
+                if !d.trim().is_empty() {
+                    config.kitty.theme_dark = Some(d.trim().to_string());
+                }
+
+                config.save(&self.config_path)?;
+                self.notify_daemon_reload();
+                println!("\n\x1b[1;32m✔ Пути к темам Kitty сохранены!\x1b[0m");
+                Self::pause_prompt();
+                raw_guard.enable_raw();
+            }
+            3 => {
+                // Wallpapers
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                println!("\x1b[1;36m══════════ Обои рабочего стола GNOME ══════════\x1b[0m\n");
+                println!("Текущие дневные обои: {}", config.gnome.wallpaper_light.as_deref().unwrap_or("(нет)"));
+                print!("Введите путь к дневным обоям (Enter чтобы оставить): ");
+                io::stdout().flush()?;
+                let l = Self::read_line_input();
+                if !l.trim().is_empty() {
+                    config.gnome.wallpaper_light = Some(l.trim().to_string());
+                }
+
+                println!("\nТекущие ночные обои: {}", config.gnome.wallpaper_dark.as_deref().unwrap_or("(нет)"));
+                print!("Введите путь к ночным обоям (Enter чтобы оставить): ");
+                io::stdout().flush()?;
+                let d = Self::read_line_input();
+                if !d.trim().is_empty() {
+                    config.gnome.wallpaper_dark = Some(d.trim().to_string());
+                }
+
+                config.save(&self.config_path)?;
+                self.notify_daemon_reload();
+                println!("\n\x1b[1;32m✔ Пути к обоям сохранены!\x1b[0m");
+                Self::pause_prompt();
+                raw_guard.enable_raw();
+            }
+            4 => {
+                // Open in Editor
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                let editor = std::env::var("EDITOR")
+                    .or_else(|_| std::env::var("VISUAL"))
+                    .unwrap_or_else(|_| "nano".to_string());
+
+                println!("\x1b[1;36mЗапуск редактора '{}' для файла {:?}...\x1b[0m", editor, self.config_path);
+                let _ = Command::new(&editor)
+                    .arg(&self.config_path)
+                    .status();
+
+                self.notify_daemon_reload();
+                raw_guard.enable_raw();
+            }
+            5 => {
+                // Reset
+                raw_guard.disable_raw();
+                print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                print!("\x1b[1;33mВы уверены, что хотите сбросить настройки до значений по умолчанию? (y/N): \x1b[0m");
+                io::stdout().flush()?;
+                if Self::read_line_input().trim().eq_ignore_ascii_case("y") {
+                    let def = Config::default();
+                    def.save(&self.config_path)?;
+                    self.notify_daemon_reload();
+                    println!("\x1b[1;32m✔ Конфигурация успешно сброшена!\x1b[0m");
+                    Self::pause_prompt();
+                }
+                raw_guard.enable_raw();
+            }
+            6 => {
+                // Back to main
+                return Ok(true);
+            }
+            _ => {}
+        }
+
+        Ok(false)
+    }
+
+    fn edit_location_interactive(&self, config: &mut Config, raw_guard: &RawTerminalGuard) -> anyhow::Result<()> {
+        let presets = [
+            ("1", "Санкт-Петербург", 59.9343, 30.3351),
+            ("2", "Москва",           55.7558, 37.6173),
+            ("3", "Новосибирск",      55.0084, 82.9357),
+            ("4", "Екатеринбург",     56.8389, 60.6057),
+            ("5", "Казань",           55.8304, 49.0661),
+            ("6", "Ввести вручную (Широта / Долгота)", 0.0, 0.0),
+            ("0", "Отмена", 0.0, 0.0),
+        ];
+
+        let mut sel = 0;
+        loop {
+            print!("\x1b[2J\x1b[1;1H\x1b[?25l");
+            println!("\x1b[1;36m══════════ Выбор координат ══════════\x1b[0m\n");
+            println!("Текущие координаты: \x1b[1;33m{:.4}° N, {:.4}° E\x1b[0m\n", config.location.latitude, config.location.longitude);
+            println!("\x1b[1mВыберите город стрелками ↑/↓ или клавишами 0-6:\x1b[0m\n");
+
+            for (i, (num, name, lat, lon)) in presets.iter().enumerate() {
+                let coords_str = if *lat != 0.0 {
+                    format!("({:.4}, {:.4})", lat, lon)
+                } else {
+                    String::new()
+                };
+
+                if i == sel {
+                    println!("  \x1b[1;30;46m ▶ [{}] {:<38} \x1b[0m \x1b[90m{}\x1b[0m", num, name, coords_str);
+                } else {
+                    println!("    \x1b[1;37m[{}]\x1b[0m {:<40} \x1b[90m{}\x1b[0m", num, name, coords_str);
                 }
             }
-            _ => return Ok(()),
-        }
 
-        config.save(&self.config_path)?;
-        self.notify_daemon_reload();
-        println!("\x1b[1;32m✔ Координаты обновлены: Lat {:.4}, Lon {:.4}\x1b[0m", config.location.latitude, config.location.longitude);
-        Self::pause_prompt();
-        Ok(())
-    }
+            println!("\n\x1b[90m[Enter] Выбрать  │  [q / Esc] Отмена\x1b[0m");
+            io::stdout().flush()?;
 
-    fn edit_schedule_mode(&self, config: &mut Config) -> anyhow::Result<()> {
-        println!("\n\x1b[1;36m--- Режим работы ---\x1b[0m");
-        println!("1. Solar (автоматически вычислять по положению солнца)");
-        println!("2. Fixed (фиксированное время по часам)");
-        print!("Выберите режим [1-2]: ");
-        io::stdout().flush()?;
-
-        match Self::read_line_input().trim() {
-            "1" => {
-                config.schedule.mode = ScheduleMode::Solar;
-            }
-            "2" => {
-                config.schedule.mode = ScheduleMode::Fixed;
-                print!("Время светлой темы (HH:MM, сейчас: {}): ", config.schedule.fixed_light_time);
-                io::stdout().flush()?;
-                let lt = Self::read_line_input();
-                if !lt.trim().is_empty() {
-                    config.schedule.fixed_light_time = lt.trim().to_string();
+            match Self::read_key() {
+                Key::Up => {
+                    if sel > 0 { sel -= 1; } else { sel = presets.len() - 1; }
                 }
+                Key::Down => {
+                    if sel < presets.len() - 1 { sel += 1; } else { sel = 0; }
+                }
+                Key::Enter => {
+                    match sel {
+                        0..=4 => {
+                            config.location.latitude = presets[sel].2;
+                            config.location.longitude = presets[sel].3;
+                            config.save(&self.config_path)?;
+                            self.notify_daemon_reload();
+                            return Ok(());
+                        }
+                        5 => {
+                            // Manual input
+                            raw_guard.disable_raw();
+                            print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                            println!("\x1b[1;36mРучной ввод координат:\x1b[0m\n");
+                            print!("Широта (Latitude, например 59.9343): ");
+                            io::stdout().flush()?;
+                            if let Ok(lat) = Self::read_line_input().trim().parse::<f64>() {
+                                config.location.latitude = lat;
+                            }
+                            print!("Долгота (Longitude, например 30.3351): ");
+                            io::stdout().flush()?;
+                            if let Ok(lon) = Self::read_line_input().trim().parse::<f64>() {
+                                config.location.longitude = lon;
+                            }
+                            config.save(&self.config_path)?;
+                            self.notify_daemon_reload();
+                            raw_guard.enable_raw();
+                            return Ok(());
+                        }
+                        _ => return Ok(()),
+                    }
+                }
+                Key::Char('1') => { config.location.latitude = presets[0].2; config.location.longitude = presets[0].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('2') => { config.location.latitude = presets[1].2; config.location.longitude = presets[1].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('3') => { config.location.latitude = presets[2].2; config.location.longitude = presets[2].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('4') => { config.location.latitude = presets[3].2; config.location.longitude = presets[3].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('5') => { config.location.latitude = presets[4].2; config.location.longitude = presets[4].3; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('0') | Key::Quit | Key::Char('q') => return Ok(()),
+                _ => {}
+            }
+        }
+    }
 
-                print!("Время тёмной темы (HH:MM, сейчас: {}): ", config.schedule.fixed_dark_time);
-                io::stdout().flush()?;
-                let dt = Self::read_line_input();
-                if !dt.trim().is_empty() {
-                    config.schedule.fixed_dark_time = dt.trim().to_string();
+    fn edit_schedule_mode_interactive(&self, config: &mut Config, raw_guard: &RawTerminalGuard) -> anyhow::Result<()> {
+        let modes = [
+            ("1", "☀️  Solar", "Автоматически по реальному восходу и закату солнца"),
+            ("2", "⏱️   Fixed", "Фиксированное расписание по часам (например, 07:30 / 20:30)"),
+            ("0", "↩️   Отмена", "Оставить без изменений"),
+        ];
+
+        let mut sel = 0;
+        loop {
+            print!("\x1b[2J\x1b[1;1H\x1b[?25l");
+            println!("\x1b[1;36m══════════ Режим расписания ══════════\x1b[0m\n");
+            println!("Текущий режим: \x1b[1;33m{:?}\x1b[0m\n", config.schedule.mode);
+            println!("\x1b[1mВыберите режим стрелками ↑/↓:\x1b[0m\n");
+
+            for (i, (num, name, desc)) in modes.iter().enumerate() {
+                if i == sel {
+                    println!("  \x1b[1;30;46m ▶ [{}] {:<20} \x1b[0m \x1b[90m({})\x1b[0m", num, name, desc);
+                } else {
+                    println!("    \x1b[1;37m[{}]\x1b[0m {:<22} \x1b[90m({})\x1b[0m", num, name, desc);
                 }
             }
-            _ => return Ok(()),
+
+            println!("\n\x1b[90m[Enter] Выбрать  │  [q / Esc] Отмена\x1b[0m");
+            io::stdout().flush()?;
+
+            match Self::read_key() {
+                Key::Up => { if sel > 0 { sel -= 1; } else { sel = 2; } }
+                Key::Down => { if sel < 2 { sel += 1; } else { sel = 0; } }
+                Key::Enter => {
+                    match sel {
+                        0 => {
+                            config.schedule.mode = ScheduleMode::Solar;
+                            config.save(&self.config_path)?;
+                            self.notify_daemon_reload();
+                            return Ok(());
+                        }
+                        1 => {
+                            config.schedule.mode = ScheduleMode::Fixed;
+                            raw_guard.disable_raw();
+                            print!("\x1b[2J\x1b[1;1H\x1b[?25h");
+                            println!("\x1b[1;36mНастройка времени (HH:MM):\x1b[0m\n");
+                            print!("Время светлой темы (сейчас: {}): ", config.schedule.fixed_light_time);
+                            io::stdout().flush()?;
+                            let lt = Self::read_line_input();
+                            if !lt.trim().is_empty() {
+                                config.schedule.fixed_light_time = lt.trim().to_string();
+                            }
+                            print!("Время тёмной темы (сейчас: {}): ", config.schedule.fixed_dark_time);
+                            io::stdout().flush()?;
+                            let dt = Self::read_line_input();
+                            if !dt.trim().is_empty() {
+                                config.schedule.fixed_dark_time = dt.trim().to_string();
+                            }
+                            config.save(&self.config_path)?;
+                            self.notify_daemon_reload();
+                            raw_guard.enable_raw();
+                            return Ok(());
+                        }
+                        _ => return Ok(()),
+                    }
+                }
+                Key::Char('1') => { config.schedule.mode = ScheduleMode::Solar; config.save(&self.config_path)?; self.notify_daemon_reload(); return Ok(()); }
+                Key::Char('0') | Key::Quit | Key::Char('q') => return Ok(()),
+                _ => {}
+            }
         }
-
-        config.save(&self.config_path)?;
-        self.notify_daemon_reload();
-        println!("\x1b[1;32m✔ Режим расписания успешно сохранен!\x1b[0m");
-        Self::pause_prompt();
-        Ok(())
-    }
-
-    fn edit_kitty_themes(&self, config: &mut Config) -> anyhow::Result<()> {
-        println!("\n\x1b[1;36m--- Настройка тем Kitty ---\x1b[0m");
-        print!("Путь к светлой теме (текущий: {}): ", config.kitty.theme_light.as_deref().unwrap_or("-"));
-        io::stdout().flush()?;
-        let l = Self::read_line_input();
-        if !l.trim().is_empty() {
-            config.kitty.theme_light = Some(l.trim().to_string());
-        }
-
-        print!("Путь к тёмной теме (текущий: {}): ", config.kitty.theme_dark.as_deref().unwrap_or("-"));
-        io::stdout().flush()?;
-        let d = Self::read_line_input();
-        if !d.trim().is_empty() {
-            config.kitty.theme_dark = Some(d.trim().to_string());
-        }
-
-        config.save(&self.config_path)?;
-        self.notify_daemon_reload();
-        println!("\x1b[1;32m✔ Пути к темам Kitty сохранены!\x1b[0m");
-        Self::pause_prompt();
-        Ok(())
-    }
-
-    fn edit_wallpapers(&self, config: &mut Config) -> anyhow::Result<()> {
-        println!("\n\x1b[1;36m--- Настройка обоев рабочего стола GNOME ---\x1b[0m");
-        print!("Путь к дневным обоям (текущий: {}): ", config.gnome.wallpaper_light.as_deref().unwrap_or("(нет)"));
-        io::stdout().flush()?;
-        let l = Self::read_line_input();
-        if !l.trim().is_empty() {
-            config.gnome.wallpaper_light = Some(l.trim().to_string());
-        }
-
-        print!("Путь к ночным обоям (текущий: {}): ", config.gnome.wallpaper_dark.as_deref().unwrap_or("(нет)"));
-        io::stdout().flush()?;
-        let d = Self::read_line_input();
-        if !d.trim().is_empty() {
-            config.gnome.wallpaper_dark = Some(d.trim().to_string());
-        }
-
-        config.save(&self.config_path)?;
-        self.notify_daemon_reload();
-        println!("\x1b[1;32m✔ Пути к обоям сохранены!\x1b[0m");
-        Self::pause_prompt();
-        Ok(())
-    }
-
-    fn open_in_editor(&self) -> anyhow::Result<()> {
-        let editor = std::env::var("EDITOR")
-            .or_else(|_| std::env::var("VISUAL"))
-            .unwrap_or_else(|_| "nano".to_string());
-
-        println!("\x1b[1;36mЗапуск редактора '{}' для файла {:?}...\x1b[0m", editor, self.config_path);
-        let _ = Command::new(&editor)
-            .arg(&self.config_path)
-            .status();
-
-        self.notify_daemon_reload();
-        Ok(())
     }
 
     fn notify_daemon_reload(&self) {
-        // Send SIGHUP to running solard daemon to hot-reload config
         let state_path = if let Some(dirs) = directories::BaseDirs::new() {
             dirs.data_local_dir().join("solard").join("state.json")
         } else {
@@ -449,7 +606,7 @@ impl InteractiveMenu {
     }
 
     fn pause_prompt() {
-        println!("\n\x1b[90mНажмите Enter для продолжения...\x1b[0m");
+        println!("\n\x1b[90mНажмите Enter для возврата...\x1b[0m");
         let mut buf = String::new();
         let _ = io::stdin().read_line(&mut buf);
     }
@@ -562,41 +719,48 @@ struct SolarDisplayInfo {
 }
 
 /// RAII Guard for enabling and restoring terminal raw mode
-struct RawTerminalGuard {
+pub struct RawTerminalGuard {
     orig: libc::termios,
 }
 
 impl RawTerminalGuard {
-    fn new() -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         unsafe {
             let mut orig = std::mem::zeroed();
             if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) != 0 {
                 return Err(anyhow::anyhow!("Failed to get terminal attributes"));
             }
 
-            let mut raw = orig;
+            let guard = Self { orig };
+            guard.enable_raw();
+            Ok(guard)
+        }
+    }
+
+    pub fn enable_raw(&self) {
+        unsafe {
+            let mut raw = self.orig;
             // Disable echo and canonical mode (line buffering)
             raw.c_lflag &= !(libc::ECHO | libc::ICANON);
             // Minimum number of characters for non-canonical read
             raw.c_cc[libc::VMIN] = 1;
             raw.c_cc[libc::VTIME] = 0;
+            let _ = libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw);
+        }
+    }
 
-            if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw) != 0 {
-                return Err(anyhow::anyhow!("Failed to set raw terminal mode"));
-            }
-
-            Ok(Self { orig })
+    pub fn disable_raw(&self) {
+        unsafe {
+            let _ = libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.orig);
         }
     }
 }
 
 impl Drop for RawTerminalGuard {
     fn drop(&mut self) {
-        unsafe {
-            let _ = libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.orig);
-            // Make cursor visible again
-            print!("\x1b[?25h");
-            let _ = io::stdout().flush();
-        }
+        self.disable_raw();
+        // Make cursor visible again
+        print!("\x1b[?25h");
+        let _ = io::stdout().flush();
     }
 }
