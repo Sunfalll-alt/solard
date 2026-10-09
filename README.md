@@ -49,7 +49,8 @@ sudo pacman -S rust cargo kitty libnotify
 
 ### 2. Сборка и установка бинарника
 ```bash
-cd /mnt/adata/project
+git clone https://github.com/Sunfalll-alt/solard.git
+cd solard
 cargo build --release
 cargo install --path .
 ```
