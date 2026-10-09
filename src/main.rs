@@ -1,5 +1,6 @@
 mod config;
 mod daemon;
+mod snapshot;
 mod solar;
 mod switcher;
 mod theme;
@@ -223,6 +224,14 @@ fn main() -> anyhow::Result<()> {
             let _ = std::process::Command::new("pkill")
                 .args(["-SIGTERM", "^solard$"])
                 .output();
+
+            // 4. Restore original system theme settings captured at startup
+            if let Some(snapshot) = snapshot::SystemSnapshot::load() {
+                if let Ok(cfg) = Config::load_or_default(&config_path) {
+                    let _ = snapshot.restore(&cfg);
+                    println!("Restored original system settings");
+                }
+            }
 
             if !stopped {
                 println!("Solard daemon stopped");

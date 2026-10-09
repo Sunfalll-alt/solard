@@ -72,6 +72,10 @@ impl Daemon {
             libc::signal(libc::SIGHUP, handle_sighup as libc::sighandler_t);
         }
 
+        // Capture initial system theme settings before applying any changes
+        let snapshot = crate::snapshot::SystemSnapshot::capture(&self.config);
+        let _ = snapshot.save_if_not_exists();
+
         let mut manager = ThemeManager::new(&self.config);
 
         // Initial check and theme application
@@ -127,7 +131,10 @@ impl Daemon {
             }
         }
 
-        log::info!("Daemon shutting down gracefully");
+        log::info!("Daemon shutting down: restoring original system settings");
+        if let Some(snapshot) = crate::snapshot::SystemSnapshot::load() {
+            let _ = snapshot.restore(&self.config);
+        }
         let _ = std::fs::remove_file(&self.state_file);
         Ok(())
     }
