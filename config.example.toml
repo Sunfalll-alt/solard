@@ -1,0 +1,98 @@
+# Solard Configuration File (~/.config/solard/config.toml)
+
+[location]
+# Координаты для вычисления восхода и заката солнца
+# Пример: Санкт-Петербург (59.9343, 30.3351), Москва (55.7558, 37.6173)
+latitude = 59.9343
+longitude = 30.3351
+
+# Зенит солнца в градусах:
+# 90.8333 - официальный восход/закат (с учетом рефракции и диска солнца)
+# 96.0    - гражданские сумерки (dawn / dusk)
+zenith = 90.8333
+
+# Смещение времени переключения относительно солнца (в минутах)
+# Например, -15 переключит тему за 15 минут до заката
+sunrise_offset_minutes = 0
+sunset_offset_minutes = 0
+
+[schedule]
+# Режим работы: "solar" (по положению солнца) или "fixed" (по фиксированному времени)
+mode = "solar"
+
+# Фиксированное время (используется, если mode = "fixed")
+fixed_light_time = "07:30"
+fixed_dark_time = "20:30"
+
+# Интервал проверки в секундах
+check_interval_secs = 60
+
+[gnome]
+enabled = true
+
+# Переключение org.gnome.desktop.interface color-scheme
+# Это стандарт FreeDesktop / xdg-desktop-portal!
+# Браузеры (Firefox, Chrome, Chromium) автоматически подхватывают эту настройку
+set_color_scheme = true
+
+# Темы GTK для старых GTK3 / GTK4 приложений
+gtk_theme_light = "Adwaita"
+gtk_theme_dark = "Adwaita-dark"
+
+# Темы иконок (опционально)
+# icon_theme_light = "Papirus"
+# icon_theme_dark = "Papirus-Dark"
+
+# Обои рабочего стола (полный путь к файлу или file:// URL)
+# wallpaper_light = "~/Pictures/Wallpapers/day.png"
+# wallpaper_dark = "~/Pictures/Wallpapers/night.png"
+
+# Встроенный в GNOME Night Light (аппаратный фильтр синего света Wayland)
+# Если включено, в темном режиме активируется ночной свет GNOME
+control_gnome_night_light = true
+
+[kitty]
+enabled = true
+
+# Пути к файлам тем Kitty
+theme_light = "~/.config/kitty/themes/solarized-light.conf"
+theme_dark = "~/.config/kitty/themes/solarized-dark.conf"
+
+# Симлинк, на который ссылается ~/.config/kitty/kitty.conf (через include current-theme.conf)
+symlink_path = "~/.config/kitty/current-theme.conf"
+
+# Отправлять SIGUSR1 всем процессам kitty для мгновенной горячей перезагрузки цветов
+send_sigusr1 = true
+
+# Использовать сокет дистанционного управления (если в kitty.conf включен allow_remote_control)
+use_remote_control = false
+
+[qt]
+enabled = true
+
+# Тема Kvantum (если используется Kvantum движок для Qt5/Qt6 приложений)
+# kvantum_theme_light = "KvFlatLight"
+# kvantum_theme_dark = "KvFlatDark"
+
+# Цветовая схема qt6ct (если используется qt6ct)
+# qt6ct_color_scheme_light = "/usr/share/qt6ct/colors/airy.conf"
+# qt6ct_color_scheme_dark = "/usr/share/qt6ct/colors/darker.conf"
+
+[gammastep]
+# Включение gammastep / redshift
+# Примечание: в GNOME Wayland рекомендуется использовать встроенный GNOME Night Light
+# (параметр gnome.control_gnome_night_light), но gammastep также поддерживается.
+enabled = false
+
+# Температура в Кельвинах
+temp_day = 6500
+temp_night = 3500
+
+# Метод: "oneshot" (gammastep -O / gammastep -x) или "service" (systemctl --user start/stop gammastep)
+method = "oneshot"
+
+[hooks]
+# Пользовательские команды или скрипты при смене темы
+# Переменные окружения: $SOLARD_MODE ("light"/"dark"), $SOLARD_LATITUDE, $SOLARD_LONGITUDE
+# on_light = "notify-send 'Тема' 'Переключено на дневную тему'"
+# on_dark = "notify-send 'Тема' 'Переключено на ночную тему'"
