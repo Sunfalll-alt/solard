@@ -166,9 +166,13 @@ method = "oneshot"
   ```
   *(Если демон запущен, команда `toggle` мгновенно отправляет ему сигнал `SIGUSR1`).*
 
-- **Запуск демона в текущем терминале для проверки**:
+- **Запуск демона вручную (в текущем терминале)**:
   ```bash
   solard daemon
+  ```
+- **Остановка запущенного демона**:
+  ```bash
+  solard stop
   ```
 
 ---
@@ -193,6 +197,15 @@ method = "oneshot"
    ```bash
    systemctl --user status solard.service
    journalctl --user -u solard.service -f
+   ```
+
+4. Остановка и отключение автозапуска:
+   ```bash
+   # Временно остановить:
+   systemctl --user stop solard.service
+
+   # Отключить автозапуск:
+   systemctl --user disable --now solard.service
    ```
 
 ---

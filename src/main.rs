@@ -50,6 +50,8 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Stop running solard daemon
+    Stop,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -186,6 +188,45 @@ fn main() -> anyhow::Result<()> {
             let default_cfg = Config::default();
             default_cfg.save(&config_path)?;
             println!("Configuration initialized successfully at {}", config_path.display());
+        }
+        Commands::Stop => {
+            // 1. Try stopping via systemd user service if active
+            let _ = std::process::Command::new("systemctl")
+                .args(["--user", "stop", "solard.service"])
+                .output();
+
+            // 2. Also check state file PID and send SIGTERM
+            let state_path = if let Some(dirs) = directories::BaseDirs::new() {
+                dirs.data_local_dir().join("solard").join("state.json")
+            } else {
+                PathBuf::from("/tmp/solard.state")
+            };
+
+            let mut stopped = false;
+            if state_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&state_path) {
+                    if let Some(pid_str) = content.split("\"pid\":").nth(1) {
+                        let pid_num = pid_str.trim().trim_end_matches('}').trim().parse::<i32>();
+                        if let Ok(pid) = pid_num {
+                            let res = unsafe { libc::kill(pid, libc::SIGTERM) };
+                            if res == 0 {
+                                println!("Stopped solard daemon (PID {})", pid);
+                                stopped = true;
+                            }
+                        }
+                    }
+                }
+                let _ = std::fs::remove_file(&state_path);
+            }
+
+            // 3. Fallback pkill
+            let _ = std::process::Command::new("pkill")
+                .args(["-SIGTERM", "^solard$"])
+                .output();
+
+            if !stopped {
+                println!("Solard daemon stopped");
+            }
         }
     }
 
