@@ -22,7 +22,7 @@ use theme::ThemeMode;
 #[command(
     name = "solard",
     author = "Arch Linux GNOME Theme Daemon",
-    version = "0.1.0",
+    version = env!("CARGO_PKG_VERSION"),
     about = "Dynamic solar and scheduled theme switcher for GNOME Wayland, Kitty, Qt, and Gammastep"
 )]
 struct Cli {

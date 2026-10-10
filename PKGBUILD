@@ -1,6 +1,6 @@
 # Maintainer: Sunfalll-alt <https://github.com/Sunfalll-alt>
 pkgname=solard
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc="Dynamic solar and scheduled theme switcher daemon for Linux (GNOME, KDE, XFCE, Cinnamon, MATE, Kitty, Alacritty, Foot, VS Code, Neovim)"
 arch=('x86_64')

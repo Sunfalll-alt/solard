@@ -1,6 +1,6 @@
 [package]
 name = "solard"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Arch Linux User"]
 description = "Solar-aware and scheduled theme daemon for GNOME/Wayland, Kitty, Qt and Gammastep"
