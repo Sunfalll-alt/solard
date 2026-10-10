@@ -1,6 +1,6 @@
 use crate::config::{expand_tilde, GnomeConfig};
 use crate::theme::ThemeMode;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::process::Command;
 
 pub struct CinnamonSwitcher {

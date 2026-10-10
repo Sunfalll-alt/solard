@@ -2,7 +2,7 @@ use crate::config::{Config, ScheduleMode};
 use crate::solar::SolarCalculator;
 use crate::switcher::ThemeManager;
 use crate::theme::ThemeMode;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use chrono::{Local, NaiveTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -163,10 +163,10 @@ impl Daemon {
 
         // Setup signal handlers via libc
         unsafe {
-            libc::signal(libc::SIGINT, handle_sigint_term as libc::sighandler_t);
-            libc::signal(libc::SIGTERM, handle_sigint_term as libc::sighandler_t);
-            libc::signal(libc::SIGUSR1, handle_sigusr1 as libc::sighandler_t);
-            libc::signal(libc::SIGHUP, handle_sighup as libc::sighandler_t);
+            libc::signal(libc::SIGINT, handle_sigint_term as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, handle_sigint_term as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGUSR1, handle_sigusr1 as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGHUP, handle_sighup as *const () as libc::sighandler_t);
         }
 
         // Capture initial system theme settings before applying any changes

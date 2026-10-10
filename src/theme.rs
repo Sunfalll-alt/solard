@@ -17,10 +17,12 @@ impl ThemeMode {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_dark(self) -> bool {
         matches!(self, Self::Dark)
     }
 
+    #[allow(dead_code)]
     pub fn is_light(self) -> bool {
         matches!(self, Self::Light)
     }

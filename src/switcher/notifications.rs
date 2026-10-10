@@ -2,7 +2,7 @@ use crate::config::NotificationsConfig;
 use crate::moon::MoonCalculator;
 use crate::theme::ThemeMode;
 use anyhow::Result;
-use chrono::{Local, Utc};
+use chrono::Utc;
 use std::process::Command;
 
 pub struct NotificationSwitcher {

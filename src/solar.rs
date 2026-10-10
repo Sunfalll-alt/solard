@@ -25,6 +25,7 @@ pub struct SolarCalculator {
 
 impl SolarCalculator {
     pub const ZENITH_OFFICIAL: f64 = 90.83333333333333;
+    #[allow(dead_code)]
     pub const ZENITH_CIVIL: f64 = 96.0;
 
     pub fn new(latitude: f64, longitude: f64) -> Self {
